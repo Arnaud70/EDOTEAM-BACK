@@ -31,7 +31,7 @@ async function bootstrap() {
       const allowedOrigins = [
         'http://localhost:3000',
         'http://localhost:3001',
-        'https://edoteam.vercel.app/',
+        'https://project-n2zhr-1wh1x8mym-arnaud70s-projects.vercel.app',
       ];
 
       if (!origin || allowedOrigins.includes(origin)) {
