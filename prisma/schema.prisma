@@ -1,0 +1,275 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String               @id @default(uuid())
+  email                 String               @unique
+  bio                   String?
+  createdAt             DateTime             @default(now()) @map("created_at")
+  deletedAt             DateTime?            @map("deleted_at")
+  emailVerified         Boolean              @default(false) @map("email_verified")
+  lastLogin             DateTime?            @map("last_login")
+  localisation          String?
+  nom                   String
+  passwordHash          String               @map("password_hash")
+  photoUrl              String?              @map("photo_url")
+  prenom                String?
+  role                  Role                 @default(CLIENT)
+  telephone             String?              @db.VarChar(20)
+  updatedAt             DateTime             @updatedAt @map("updated_at")
+  titreProfessionnel    String?              @map("titre_professionnel")
+  activityLogs          ActivityLog[]
+  availabilities        Availability[]
+  givenReviews          Avis[]               @relation("ClientReviews")
+  receivedReviews       Avis[]               @relation("PrestataireReviews")
+  bookingsAsClient      Booking[]            @relation("ClientBookings")
+  bookingsAsPrestataire Booking[]            @relation("PrestataireBookings")
+  media                 Media[]
+  receivedMessages      Message[]            @relation("ReceivedMessages")
+  sentMessages          Message[]            @relation("SentMessages")
+  services              PrestataireService[]
+  refreshTokens         RefreshToken[]
+  reports               Report[]             @relation("Reporter")
+  resolvedReports       Report[]             @relation("Resolver")
+  wallet                Wallet?
+  notifications         Notification[]
+}
+
+model Service {
+  id          String               @id @default(uuid())
+  nom         String               @unique
+  description String?
+  icon        String?
+  createdAt   DateTime             @default(now()) @map("created_at")
+  bookings    Booking[]
+  providers   PrestataireService[]
+}
+
+model PrestataireService {
+  id            String   @id @default(uuid())
+  prestataireId String   @map("prestataire_id")
+  serviceId     String   @map("service_id")
+  prixIndicatif Decimal? @map("prix_indicatif")
+  experience    Int?
+  createdAt     DateTime @default(now()) @map("created_at")
+  prestataire   User     @relation(fields: [prestataireId], references: [id], onDelete: Cascade)
+  service       Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@unique([prestataireId, serviceId])
+  @@map("prestataire_services")
+}
+
+model Availability {
+  id            String    @id @default(uuid())
+  prestataireId String    @map("prestataire_id")
+  dayOfWeek     DayOfWeek @map("day_of_week")
+  startTime     DateTime  @map("start_time")
+  endTime       DateTime  @map("end_time")
+  isRecurring   Boolean   @default(true) @map("is_recurring")
+  specificDate  DateTime? @map("specific_date")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  prestataire   User      @relation(fields: [prestataireId], references: [id], onDelete: Cascade)
+
+  @@map("availability")
+}
+
+model Message {
+  id         String    @id @default(uuid())
+  senderId   String    @map("sender_id")
+  receiverId String    @map("receiver_id")
+  content    String
+  isRead     Boolean   @default(false) @map("is_read")
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  receiver   User      @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  sender     User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  reports    Report[]
+
+  @@index([senderId, receiverId, createdAt])
+  @@map("messages")
+}
+
+model Avis {
+  id                  String   @id @default(uuid())
+  clientId            String   @map("client_id")
+  prestataireId       String   @map("prestataire_id")
+  note                Int      @db.SmallInt
+  commentaire         String?
+  interactionVerified Boolean  @default(false) @map("interaction_verified")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  client              User     @relation("ClientReviews", fields: [clientId], references: [id], onDelete: Cascade)
+  prestataire         User     @relation("PrestataireReviews", fields: [prestataireId], references: [id], onDelete: Cascade)
+  reports             Report[]
+
+  @@unique([clientId, prestataireId])
+  @@map("avis")
+}
+
+model Report {
+  id           String       @id @default(uuid())
+  reporterId   String       @map("reporter_id")
+  reviewId     String?      @map("review_id")
+  messageId    String?      @map("message_id")
+  targetUserId String?      @map("target_user_id")
+  motif        String
+  description  String?
+  status       ReportStatus @default(PENDING)
+  resolvedById String?      @map("resolved_by_id")
+  resolvedAt   DateTime?    @map("resolved_at")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  message      Message?     @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  reporter     User         @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  resolver     User?        @relation("Resolver", fields: [resolvedById], references: [id])
+  review       Avis?        @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("reports")
+}
+
+model Media {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  url       String
+  type      MediaType
+  mimeType  String?   @map("mime_type")
+  size      Int?
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("media")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  ipAddress  String?  @map("ip_address")
+  userAgent  String?  @map("user_agent")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User?    @relation(fields: [userId], references: [id])
+
+  @@map("activity_logs")
+}
+
+model Booking {
+  id            String        @id @default(uuid())
+  clientId      String        @map("client_id")
+  prestataireId String        @map("prestataire_id")
+  serviceId     String        @map("service_id")
+  date          DateTime
+  startTime     DateTime      @map("start_time")
+  endTime       DateTime      @map("end_time")
+  status        BookingStatus @default(PENDING)
+  totalAmount   Decimal       @map("total_amount")
+  address       String
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+  client        User          @relation("ClientBookings", fields: [clientId], references: [id])
+  prestataire   User          @relation("PrestataireBookings", fields: [prestataireId], references: [id])
+  service       Service       @relation(fields: [serviceId], references: [id])
+
+  @@map("bookings")
+}
+
+model Wallet {
+  id           String        @id @default(uuid())
+  userId       String        @unique @map("user_id")
+  balance      Decimal       @default(0)
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+  transactions Transaction[]
+  user         User          @relation(fields: [userId], references: [id])
+
+  @@map("wallets")
+}
+
+model Transaction {
+  id          String          @id @default(uuid())
+  walletId    String          @map("wallet_id")
+  type        TransactionType
+  amount      Decimal
+  description String?
+  status      String          @default("COMPLETED")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  wallet      Wallet          @relation(fields: [walletId], references: [id])
+
+  @@map("transactions")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String
+  message   String
+  type      String   // e.g., 'BOOKING_CONFIRMED', 'MESSAGE_RECEIVED'
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
+
+enum Role {
+  CLIENT
+  PRESTATAIRE
+  ADMIN
+}
+
+enum DayOfWeek {
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
+  SUNDAY
+}
+
+enum ReportStatus {
+  PENDING
+  REVIEWED
+  RESOLVED
+  REJECTED
+}
+
+enum MediaType {
+  PROFILE
+  WORK
+  DOCUMENT
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAWAL
+  PAYMENT
+  REFUND
+}
