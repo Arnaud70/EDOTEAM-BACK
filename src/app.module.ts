@@ -50,7 +50,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
           },
         },
         defaults: {
-          from: '"Togo Connect" <noreply@togoconnect.tg>',
+          from: `"${config.get('MAIL_FROM_NAME') || 'EDOTEAM'}" <${config.get('MAIL_FROM_EMAIL') || 'noreply@edoteam.tg'}>`,
         },
       }),
     }),

@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { MailerService } from '@nestjs-modules/mailer';
 
 @Injectable()
 export class AuthService {
@@ -11,6 +12,7 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private activityLogs: ActivityLogsService,
+    private mailerService: MailerService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -47,6 +49,26 @@ export class AuthService {
       metadata: { role: user.role },
     });
 
+    // Envoyer l'e-mail de bienvenue
+    try {
+      await this.mailerService.sendMail({
+        to: user.email,
+        subject: 'Bienvenue sur EDOTEAM !',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+            <h2 style="color: #4CAF50;">Bienvenue sur EDOTEAM, ${user.prenom} !</h2>
+            <p>Nous sommes ravis de vous compter parmi nous.</p>
+            <p>Votre compte a été créé avec succès avec le rôle : <strong>${user.role}</strong>.</p>
+            <p>Vous pouvez maintenant vous connecter et commencer à utiliser nos services.</p>
+            <br>
+            <p>Cordialement,<br>L'équipe EDOTEAM</p>
+          </div>
+        `,
+      });
+    } catch (error) {
+      console.error("Erreur lors de l'envoi de l'e-mail de bienvenue:", error);
+    }
+
     return result;
   }
 
@@ -76,6 +98,26 @@ export class AuthService {
       entityId: user.id,
     });
 
+    // Envoyer la notification de connexion
+    try {
+      await this.mailerService.sendMail({
+        to: user.email,
+        subject: 'Nouvelle connexion à votre compte EDOTEAM',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+            <h2 style="color: #2196F3;">Alerte de connexion</h2>
+            <p>Bonjour ${user.prenom},</p>
+            <p>Une nouvelle connexion a été détectée sur votre compte le ${new Date().toLocaleString('fr-FR')}.</p>
+            <p>Si c'était vous, vous pouvez ignorer cet e-mail. Sinon, veuillez sécuriser votre compte immédiatement.</p>
+            <br>
+            <p>Cordialement,<br>L'équipe EDOTEAM</p>
+          </div>
+        `,
+      });
+    } catch (error) {
+      console.error("Erreur lors de l'envoi de l'e-mail de connexion:", error);
+    }
+
     return result;
   }
 
@@ -91,6 +133,19 @@ export class AuthService {
       entityType: 'USER',
       entityId: userId,
     });
+  }
+
+  async getProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        media: true,
+      },
+    });
+    if (!user) return null;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { passwordHash, ...rest } = user;
+    return rest;
   }
 
   async refreshTokens(userId: string, rt: string) {
@@ -150,5 +205,46 @@ export class AuthService {
       refresh_token: rt,
       user,
     };
+  }
+
+  async validateGoogleUser(googleUser: any) {
+    const { email, nom, prenom } = googleUser;
+    
+    let user = await this.prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      // Créer l'utilisateur s'il n'existe pas
+      user = await this.prisma.user.create({
+        data: {
+          email,
+          nom: nom || 'Utilisateur',
+          prenom: prenom || 'Google',
+          passwordHash: 'GOOGLE_AUTH_NO_PASSWORD', // Flag pour indiquer qu'il n'y a pas de mot de passe local
+          role: 'CLIENT', // Rôle par défaut
+        },
+      });
+
+      // Envoyer l'e-mail de bienvenue
+      try {
+        await this.mailerService.sendMail({
+          to: user.email,
+          subject: 'Bienvenue sur EDOTEAM (via Google) !',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+              <h2 style="color: #4CAF50;">Bienvenue sur EDOTEAM, ${user.prenom} !</h2>
+              <p>Votre compte a été créé avec succès via votre compte Google.</p>
+              <br>
+              <p>Cordialement,<br>L'équipe EDOTEAM</p>
+            </div>
+          `,
+        });
+      } catch (error) {
+        console.error("Erreur lors de l'envoi de l'e-mail de bienvenue Google:", error);
+      }
+    }
+
+    return this.getTokens(user.id, user.email, user.role);
   }
 }

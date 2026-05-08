@@ -1,4 +1,5 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Res, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Res, UseGuards, Req, Get } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
@@ -71,6 +72,34 @@ export class AuthController {
     await this.authService.logout(req.user.id);
     res.clearCookie('refresh_token');
     return { success: true };
+  }
+
+  @ApiOperation({ summary: 'Initier la connexion Google' })
+  @Get('google')
+  @UseGuards(AuthGuard('google'))
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async googleAuth(@Req() req: any) {}
+
+  @ApiOperation({ summary: 'Callback après connexion Google' })
+  @Get('google/callback')
+  @UseGuards(AuthGuard('google'))
+  async googleAuthRedirect(@Req() req: any, @Res() res: any) {
+    const result = await this.authService.validateGoogleUser(req.user);
+    
+    // On met le refresh token dans le cookie
+    this.setRefreshToken(res, result.refresh_token);
+    
+    // On redirige vers le frontend avec le access_token (ou on peut utiliser un message postMessage)
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    res.redirect(`${frontendUrl}/?token=${result.access_token}`);
+  }
+
+  @ApiBearerAuth('JWT')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Récupérer le profil utilisateur actuel' })
+  @Get('profile')
+  async getProfile(@Req() req: any) {
+    return this.authService.getProfile(req.user.id);
   }
 
   private setRefreshToken(res: any, token: string) {
