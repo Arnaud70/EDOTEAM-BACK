@@ -21,10 +21,22 @@ export class RegisterDto {
   @IsString()
   prenom?: string;
 
+  @ApiPropertyOptional({ example: '+228 90 00 00 00', description: 'Numéro de téléphone' })
+  @IsString()
+  telephone?: string;
+
   @ApiProperty({ example: 'CLIENT', enum: ['CLIENT', 'PRESTATAIRE'], description: 'Rôle de l\'utilisateur' })
   @IsString()
   @IsNotEmpty()
   role: 'CLIENT' | 'PRESTATAIRE';
+
+  @ApiPropertyOptional({ example: 'Lomé', description: 'Localisation du prestataire' })
+  @IsString()
+  region?: string;
+
+  @ApiPropertyOptional({ example: 'Plombier', description: 'Titre professionnel du prestataire' })
+  @IsString()
+  specialite?: string;
 }
 
 export class LoginDto {
