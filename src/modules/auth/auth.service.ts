@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -26,6 +26,16 @@ export class AuthService {
       throw new ConflictException('Cet email est déjà utilisé');
     }
 
+    if (dto.role === 'PRESTATAIRE' && dto.specialite) {
+      const specialiteStr = dto.specialite.toLowerCase();
+      const BANNED_WORDS = ['sexe', 'drogue', 'arme', 'tueur', 'prostituee', 'escort', 'vol', 'arnaque', 'hack', 'piratage', 'drogues', 'armes', 'murder', 'sex', 'porn', 'porno', 'assassin', 'viagra', 'drog'];
+      const containsBannedWord = BANNED_WORDS.some(word => specialiteStr.includes(word));
+      
+      if (containsBannedWord) {
+        throw new BadRequestException("Le service proposé est invalide et ne respecte pas nos conditions d'utilisation et nos normes d'excellence.");
+      }
+    }
+
     const salt = await bcrypt.genSalt();
     const passwordHash = await bcrypt.hash(password, salt);
 
@@ -44,13 +54,17 @@ export class AuthService {
 
     const result = await this.getTokens(user.id, user.email, user.role);
 
-    await this.activityLogs.log({
-      userId: user.id,
-      action: 'REGISTER',
-      entityType: 'USER',
-      entityId: user.id,
-      metadata: { role: user.role },
-    });
+    try {
+      await this.activityLogs.log({
+        userId: user.id,
+        action: 'REGISTER',
+        entityType: 'USER',
+        entityId: user.id,
+        metadata: { role: user.role },
+      });
+    } catch (logError) {
+      console.error("Erreur lors de la journalisation de l'inscription:", logError);
+    }
 
     // Envoyer l'e-mail de bienvenue personnalisé
     try {

@@ -60,6 +60,12 @@ export class AdminController {
     return this.adminService.restoreUser(id);
   }
 
+  @ApiOperation({ summary: 'Supprimer définitivement un utilisateur' })
+  @Delete('users/:id')
+  deleteUser(@Param('id') id: string) {
+    return this.adminService.deleteUser(id);
+  }
+
   // --- Service Categories ---
 
   @ApiOperation({ summary: 'Créer une nouvelle catégorie de service' })

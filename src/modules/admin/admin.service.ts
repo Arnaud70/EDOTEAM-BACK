@@ -88,6 +88,24 @@ export class AdminService {
     });
   }
 
+  async deleteUser(userId: string) {
+    return this.prisma.$transaction([
+      this.prisma.notification.deleteMany({ where: { userId } }),
+      this.prisma.activityLog.deleteMany({ where: { userId } }),
+      this.prisma.booking.deleteMany({ where: { OR: [{ clientId: userId }, { prestataireId: userId }] } }),
+      this.prisma.transaction.deleteMany({ where: { wallet: { userId } } }),
+      this.prisma.wallet.deleteMany({ where: { userId } }),
+      this.prisma.report.deleteMany({ where: { OR: [{ reporterId: userId }, { resolvedById: userId }] } }),
+      this.prisma.message.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } }),
+      this.prisma.avis.deleteMany({ where: { OR: [{ clientId: userId }, { prestataireId: userId }] } }),
+      this.prisma.prestataireService.deleteMany({ where: { prestataireId: userId } }),
+      this.prisma.availability.deleteMany({ where: { prestataireId: userId } }),
+      this.prisma.media.deleteMany({ where: { userId } }),
+      this.prisma.refreshToken.deleteMany({ where: { userId } }),
+      this.prisma.user.delete({ where: { id: userId } })
+    ]);
+  }
+
   // Service Category Management
   async createService(data: { nom: string; description?: string; icon?: string }) {
     return this.prisma.service.create({ data });

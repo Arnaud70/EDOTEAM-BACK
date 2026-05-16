@@ -8,7 +8,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   constructor() {
     super({
       log: ['error', 'warn'],
-      datasourceUrl: process.env.DATABASE_URL + '&connection_limit=2&pool_timeout=0',
+      datasourceUrl: process.env.DATABASE_URL,
     });
   }
 
@@ -17,11 +17,16 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
     while (retries > 0) {
       try {
         await this.$connect();
+        // Ping query to ensure connection is actually established and database is awake
+        await this.$executeRawUnsafe('SELECT 1');
         this.logger.log('Successfully connected to the database');
         break;
       } catch (err) {
         retries--;
-        this.logger.error(`Failed to connect to the database. Retries left: ${retries}`, err.stack);
+        this.logger.error(
+          `Failed to connect to the database. Retries left: ${retries}`,
+          err.stack,
+        );
         if (retries === 0) throw err;
         // Wait for 2 seconds before retrying
         await new Promise((resolve) => setTimeout(resolve, 2000));

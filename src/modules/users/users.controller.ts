@@ -12,7 +12,6 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 export class UsersController {
   constructor(private usersService: UsersService) { }
 
-  @UseInterceptors(CacheInterceptor)
   @Get('search')
   @ApiOperation({ summary: 'Recherche avancée de prestataires (CDC v4.0)' })
   @ApiQuery({ name: 'q', required: false, description: 'Terme de recherche' })
