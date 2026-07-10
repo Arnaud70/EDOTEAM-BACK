@@ -42,15 +42,15 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         transport: {
-          host: config.get('SMTP_HOST') || 'smtp.ethereal.email',
-          port: config.get('SMTP_PORT') || 587,
+          host: config.get('SMTP_HOST') || config.get('MAIL_HOST') || 'smtp.ethereal.email',
+          port: Number(config.get('SMTP_PORT') || config.get('MAIL_PORT') || 587),
           auth: {
-            user: config.get('SMTP_USER') || 'test@ethereal.email',
-            pass: config.get('SMTP_PASS') || 'password',
+            user: config.get('SMTP_USER') || config.get('MAIL_USER') || 'test@ethereal.email',
+            pass: config.get('SMTP_PASS') || config.get('MAIL_PASSWORD') || 'password',
           },
         },
         defaults: {
-          from: `"${config.get('MAIL_FROM_NAME') || 'EDOTEAM'}" <${config.get('MAIL_FROM_EMAIL') || 'noreply@edoteam.tg'}>`,
+          from: `"${config.get('MAIL_FROM_NAME') || 'EDOTEAM'}" <${config.get('MAIL_FROM_EMAIL') || config.get('MAIL_USER') || 'noreply@edoteam.tg'}>`,
         },
       }),
     }),

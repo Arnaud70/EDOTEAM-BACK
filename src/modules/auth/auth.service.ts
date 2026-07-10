@@ -17,7 +17,9 @@ export class AuthService {
   ) {}
 
   private isSmtpConfigured(): boolean {
-    return !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
+    return !!(process.env.SMTP_HOST || process.env.MAIL_HOST) &&
+           !!(process.env.SMTP_USER || process.env.MAIL_USER) &&
+           !!(process.env.SMTP_PASS || process.env.MAIL_PASSWORD);
   }
 
   async register(dto: RegisterDto) {
