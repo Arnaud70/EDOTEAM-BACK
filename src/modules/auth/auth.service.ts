@@ -6,6 +6,20 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { MailerService } from '@nestjs-modules/mailer';
+import { NotificationsService } from '../notifications/notifications.service';
+
+export const buildWelcomeNotificationContent = (role: string) => {
+  const isPrestataire = role === 'PRESTATAIRE';
+  const title = isPrestataire
+    ? 'Bienvenue Expert EDOTEAM • Votre réussite commence ici'
+    : 'Bienvenue sur EDOTEAM • Votre expérience démarre ici';
+
+  const message = isPrestataire
+    ? 'Découvrez comment présenter votre expertise, attirer des clients et gérer votre activité avec simplicité. Étapes rapides : 1) Complétez votre profil, 2) Ajoutez vos services, 3) Définissez vos disponibilités, 4) Téléversez vos documents pour renforcer votre crédibilité.'
+    : 'Découvrez comment trouver les bons prestataires, réserver en quelques clics et suivre votre expérience avec confiance. Étapes rapides : 1) Complétez votre profil, 2) Explorez les services, 3) Réservez et suivez votre demande.';
+
+  return { title, message };
+};
 
 @Injectable()
 export class AuthService {
@@ -14,12 +28,11 @@ export class AuthService {
     private jwtService: JwtService,
     private activityLogs: ActivityLogsService,
     private mailerService: MailerService,
+    private notificationsService: NotificationsService,
   ) {}
 
   private isSmtpConfigured(): boolean {
-    return !!(process.env.SMTP_HOST || process.env.MAIL_HOST) &&
-           !!(process.env.SMTP_USER || process.env.MAIL_USER) &&
-           !!(process.env.SMTP_PASS || process.env.MAIL_PASSWORD);
+    return !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
   }
 
   async register(dto: RegisterDto) {
@@ -96,6 +109,18 @@ export class AuthService {
       });
     } catch (logError) {
       console.error("Erreur lors de la journalisation de l'inscription:", logError);
+    }
+
+    try {
+      const welcomeContent = buildWelcomeNotificationContent(user.role);
+      await this.notificationsService.create({
+        userId: user.id,
+        title: welcomeContent.title,
+        message: welcomeContent.message,
+        type: 'WELCOME',
+      });
+    } catch (notificationError) {
+      console.error('Erreur lors de la création de la notification de bienvenue:', notificationError);
     }
 
     // Envoyer l'e-mail de bienvenue personnalisé uniquement si la configuration SMTP est réelle
@@ -202,7 +227,18 @@ export class AuthService {
       entityId: user.id,
     });
 
-    // Envoyer la notification de connexion si la configuration mail est disponible
+    try {
+      await this.notificationsService.create({
+        userId: user.id,
+        title: 'Bienvenue sur EDOTEAM',
+        message: 'Vous êtes connecté avec succès. Consultez rapidement vos notifications pour découvrir les nouveautés et configurer votre profil selon votre rôle.',
+        type: 'LOGIN',
+      });
+    } catch (notificationError) {
+      console.error('Erreur lors de la création de la notification de connexion:', notificationError);
+    }
+
+    // Envoyer la notification de connexion par e-mail si la configuration mail est disponible
     try {
       if (this.isSmtpConfigured()) {
         await this.mailerService.sendMail({
@@ -338,6 +374,18 @@ export class AuthService {
           role: 'CLIENT', // Rôle par défaut
         },
       });
+
+      try {
+        const welcomeContent = buildWelcomeNotificationContent(user.role);
+        await this.notificationsService.create({
+          userId: user.id,
+          title: welcomeContent.title,
+          message: welcomeContent.message,
+          type: 'WELCOME',
+        });
+      } catch (notificationError) {
+        console.error('Erreur lors de la création de la notification de bienvenue Google:', notificationError);
+      }
 
       // Envoyer l'e-mail de bienvenue uniquement si la configuration SMTP est réelle
       try {
