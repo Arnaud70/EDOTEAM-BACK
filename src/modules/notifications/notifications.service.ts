@@ -16,10 +16,10 @@ export class NotificationsService {
       data,
     });
 
-    // Envoyer l'email
+    // Envoyer l'email uniquement si la configuration SMTP est réelle
     try {
       const user = await this.prisma.user.findUnique({ where: { id: data.userId } });
-      if (user && user.email) {
+      if (user && user.email && process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
         await this.mailerService.sendMail({
           to: user.email,
           subject: `[Togo Connect] ${data.title}`,

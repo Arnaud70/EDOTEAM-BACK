@@ -1,6 +1,7 @@
-import { IsString, IsOptional, IsEnum, IsUrl } from 'class-validator';
+import { IsString, IsOptional, IsEnum, IsUrl, MinLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
+import { Role } from '@prisma/client';
 
 export class UpdateProfileDto {
   @ApiPropertyOptional({ example: 'Jean' })
@@ -38,4 +39,15 @@ export class UpdateProfileDto {
   @Transform(({ value }) => (value === '' ? undefined : value))
   @IsString()
   photoUrl?: string;
+
+  @ApiPropertyOptional({ example: 'MonMotDePasse123', description: 'Nouveau mot de passe (min 6 caractères)' })
+  @IsOptional()
+  @IsString()
+  @MinLength(6, { message: 'Le mot de passe doit contenir au moins 6 caractères' })
+  motDePasse?: string;
+
+  @ApiPropertyOptional({ enum: Role, example: Role.PRESTATAIRE })
+  @IsOptional()
+  @IsEnum(Role)
+  role?: Role;
 }

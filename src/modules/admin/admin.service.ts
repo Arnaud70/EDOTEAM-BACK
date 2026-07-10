@@ -30,12 +30,53 @@ export class AdminService {
       this.prisma.report.count({ where: { status: 'PENDING' } }),
     ]);
 
+    const [totalRevenueResult, missionsRealisees, serviceDistributionGroups] = await Promise.all([
+      this.prisma.booking.aggregate({
+        _sum: { totalAmount: true },
+        where: { status: 'CONFIRMED' },
+      }),
+      this.prisma.booking.count({ where: { status: 'COMPLETED' } }),
+      this.prisma.prestataireService.groupBy({
+        by: ['serviceId'],
+        _count: { id: true },
+        orderBy: { _count: { id: 'desc' } },
+        take: 10,
+      }),
+    ]);
+
+    const serviceIds = serviceDistributionGroups.map((group) => group.serviceId);
+    const services = serviceIds.length
+      ? await this.prisma.service.findMany({
+          where: { id: { in: serviceIds } },
+          select: { id: true, nom: true },
+        })
+      : [];
+
+    const serviceDistribution = serviceDistributionGroups.map((group) => ({
+      name: services.find((service) => service.id === group.serviceId)?.nom ?? 'Autre',
+      value: group._count.id,
+    }));
+
+    const monthlyRevenue = await this.prisma.$queryRaw<Array<{ month: string; revenue: number }>>`
+      SELECT to_char(date_trunc('month', "date"), 'Mon') AS month,
+             sum(total_amount)::float AS revenue
+      FROM bookings
+      WHERE status = 'CONFIRMED'
+      GROUP BY date_trunc('month', "date")
+      ORDER BY date_trunc('month', "date")
+    `;
+
     return {
       utilisateurs: { total: totalUsers, clients: totalClients, prestataires: totalPrestataires },
       services: totalServices,
       messages: totalMessages,
       avis: totalAvis,
       signalements: { enAttente: pendingReports },
+      chiffreAffaires: Number(totalRevenueResult._sum.totalAmount ?? 0),
+      missionsRealisees,
+      totalBookings: await this.prisma.booking.count(),
+      monthlyRevenue,
+      serviceDistribution,
     };
   }
 
@@ -120,18 +161,40 @@ export class AdminService {
   }
 
   async getProviderStats(userId: string) {
-    const [totalServices, totalAvailabilities, totalReviews] = await Promise.all([
+    const [
+      totalServices,
+      totalAvailabilities,
+      totalReviews,
+      totalBookings,
+      totalRevenueResult,
+    ] = await Promise.all([
       this.prisma.prestataireService.count({ where: { prestataireId: userId } }),
       this.prisma.availability.count({ where: { prestataireId: userId } }),
       this.prisma.avis.count({ where: { prestataireId: userId } }),
+      this.prisma.booking.count({ where: { prestataireId: userId } }),
+      this.prisma.booking.aggregate({
+        _sum: { totalAmount: true },
+        where: { prestataireId: userId, status: 'CONFIRMED' },
+      }),
     ]);
+
+    const monthlyRevenue = await this.prisma.$queryRaw<Array<{ month: string; revenue: number }>>`
+      SELECT to_char(date_trunc('month', "date"), 'Mon') AS month,
+             sum(total_amount)::float AS revenue
+      FROM bookings
+      WHERE prestataire_id = ${userId}
+        AND status = 'CONFIRMED'
+      GROUP BY date_trunc('month', "date")
+      ORDER BY date_trunc('month', "date")
+    `;
 
     return {
       totalServices,
       totalAvailabilities,
       totalReviews,
-      totalRevenue: 0,
-      totalBookings: 0,
+      totalRevenue: Number(totalRevenueResult._sum.totalAmount ?? 0),
+      totalBookings,
+      monthlyRevenue,
     };
   }
 }

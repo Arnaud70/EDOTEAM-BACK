@@ -20,12 +20,21 @@ export class AvisService {
       throw new BadRequestException('La note doit être entre 1 et 5');
     }
 
-    // Vérification interaction préalable
+    // Vérification interaction préalable (message ou réservation)
     const hasInteracted = await this.messagesService.hasInteracted(clientId, prestataireId);
-    
-    // Au lieu de bloquer l'avis, on flagge simplement s'il y a eu interaction.
-    // Cela permet aux utilisateurs de laisser un avis même s'ils ont interagi hors plateforme.
-    const interactionVerified = hasInteracted;
+    const hasBooked = await this.prisma.booking.count({
+      where: {
+        clientId,
+        prestataireId,
+        status: { not: 'CANCELLED' },
+      },
+    });
+
+    if (!hasInteracted && hasBooked === 0) {
+      throw new BadRequestException('Vous ne pouvez laisser un avis qu’après une interaction avec ce prestataire.');
+    }
+
+    const interactionVerified = hasInteracted || hasBooked > 0;
 
     // 1 seul avis par client/prestataire
     const existing = await this.prisma.avis.findUnique({

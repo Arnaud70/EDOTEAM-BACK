@@ -85,13 +85,14 @@ export class AuthController {
   @UseGuards(AuthGuard('google'))
   async googleAuthRedirect(@Req() req: any, @Res() res: any) {
     const result = await this.authService.validateGoogleUser(req.user);
-    
+
     // On met le refresh token dans le cookie
     this.setRefreshToken(res, result.refresh_token);
-    
-    // On redirige vers le frontend avec le access_token (ou on peut utiliser un message postMessage)
+
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-    res.redirect(`${frontendUrl}/?token=${result.access_token}`);
+    const onboardingParam = result.isNewUser ? '&onboarding=1' : '';
+    const tempPasswordParam = result.temporaryPassword ? `&tempPassword=${encodeURIComponent(result.temporaryPassword)}` : '';
+    res.redirect(`${frontendUrl}/?token=${result.access_token}${onboardingParam}${tempPasswordParam}`);
   }
 
   @ApiBearerAuth('JWT')

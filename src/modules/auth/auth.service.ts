@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
@@ -14,6 +15,10 @@ export class AuthService {
     private activityLogs: ActivityLogsService,
     private mailerService: MailerService,
   ) {}
+
+  private isSmtpConfigured(): boolean {
+    return !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
+  }
 
   async register(dto: RegisterDto) {
     const email = dto.email.trim().toLowerCase();
@@ -52,6 +57,31 @@ export class AuthService {
       },
     });
 
+    if (dto.role === 'PRESTATAIRE' && dto.specialite) {
+      const normalizedName = dto.specialite.trim();
+      let service = await this.prisma.service.findFirst({
+        where: { nom: { equals: normalizedName, mode: 'insensitive' } },
+      });
+
+      if (!service) {
+        service = await this.prisma.service.create({
+          data: {
+            nom: normalizedName,
+            description: `Service proposé par ${dto.nom} ${dto.prenom || ''}`.trim(),
+          },
+        });
+      }
+
+      await this.prisma.prestataireService.create({
+        data: {
+          prestataireId: user.id,
+          serviceId: service.id,
+          prixIndicatif: null,
+          experience: 0,
+        },
+      }).catch(() => undefined);
+    }
+
     const result = await this.getTokens(user.id, user.email, user.role);
 
     try {
@@ -66,8 +96,12 @@ export class AuthService {
       console.error("Erreur lors de la journalisation de l'inscription:", logError);
     }
 
-    // Envoyer l'e-mail de bienvenue personnalisé
+    // Envoyer l'e-mail de bienvenue personnalisé uniquement si la configuration SMTP est réelle
     try {
+      if (!this.isSmtpConfigured()) {
+        return result;
+      }
+
       const isPrestataire = user.role === 'PRESTATAIRE';
       const subject = isPrestataire 
         ? 'Bienvenue Expert EDOTEAM - Guide de démarrage' 
@@ -166,22 +200,24 @@ export class AuthService {
       entityId: user.id,
     });
 
-    // Envoyer la notification de connexion
+    // Envoyer la notification de connexion si la configuration mail est disponible
     try {
-      await this.mailerService.sendMail({
-        to: user.email,
-        subject: 'Nouvelle connexion à votre compte EDOTEAM',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
-            <h2 style="color: #2196F3;">Alerte de connexion</h2>
-            <p>Bonjour ${user.prenom},</p>
-            <p>Une nouvelle connexion a été détectée sur votre compte le ${new Date().toLocaleString('fr-FR')}.</p>
-            <p>Si c'était vous, vous pouvez ignorer cet e-mail. Sinon, veuillez sécuriser votre compte immédiatement.</p>
-            <br>
-            <p>Cordialement,<br>L'équipe EDOTEAM</p>
-          </div>
-        `,
-      });
+      if (this.isSmtpConfigured()) {
+        await this.mailerService.sendMail({
+          to: user.email,
+          subject: 'Nouvelle connexion à votre compte EDOTEAM',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+              <h2 style="color: #2196F3;">Alerte de connexion</h2>
+              <p>Bonjour ${user.prenom},</p>
+              <p>Une nouvelle connexion a été détectée sur votre compte le ${new Date().toLocaleString('fr-FR')}.</p>
+              <p>Si c'était vous, vous pouvez ignorer cet e-mail. Sinon, veuillez sécuriser votre compte immédiatement.</p>
+              <br>
+              <p>Cordialement,<br>L'équipe EDOTEAM</p>
+            </div>
+          `,
+        });
+      }
     } catch (error) {
       console.error("Erreur lors de l'envoi de l'e-mail de connexion:", error);
     }
@@ -277,25 +313,36 @@ export class AuthService {
 
   async validateGoogleUser(googleUser: any) {
     const { email, nom, prenom } = googleUser;
-    
+    let isNewUser = false;
+
     let user = await this.prisma.user.findUnique({
       where: { email },
     });
 
+    let temporaryPassword: string | undefined;
     if (!user) {
+      isNewUser = true;
+      temporaryPassword = randomBytes(12).toString('base64url').slice(0, 12);
+      const salt = await bcrypt.genSalt();
+      const passwordHash = await bcrypt.hash(temporaryPassword, salt);
+
       // Créer l'utilisateur s'il n'existe pas
       user = await this.prisma.user.create({
         data: {
           email,
           nom: nom || 'Utilisateur',
           prenom: prenom || 'Google',
-          passwordHash: 'GOOGLE_AUTH_NO_PASSWORD', // Flag pour indiquer qu'il n'y a pas de mot de passe local
+          passwordHash,
           role: 'CLIENT', // Rôle par défaut
         },
       });
 
-      // Envoyer l'e-mail de bienvenue
+      // Envoyer l'e-mail de bienvenue uniquement si la configuration SMTP est réelle
       try {
+        if (!this.isSmtpConfigured()) {
+          return { ...(await this.getTokens(user.id, user.email, user.role)), isNewUser, temporaryPassword };
+        }
+
         await this.mailerService.sendMail({
           to: user.email,
           subject: 'Bienvenue sur EDOTEAM (via Google) !',
@@ -313,6 +360,10 @@ export class AuthService {
       }
     }
 
-    return this.getTokens(user.id, user.email, user.role);
+    return {
+      ...(await this.getTokens(user.id, user.email, user.role)),
+      isNewUser,
+      temporaryPassword: isNewUser ? temporaryPassword : undefined,
+    };
   }
 }
