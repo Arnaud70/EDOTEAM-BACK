@@ -24,6 +24,7 @@ import { BookingsModule } from './modules/bookings/bookings.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { UploadModule } from './modules/upload/upload.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { PaymentsModule } from './modules/payments/payments.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
     WalletModule,
     UploadModule,
     NotificationsModule,
+    PaymentsModule,
   ],
   providers: [
     {
