@@ -25,28 +25,33 @@ async function main() {
   }
   console.log(`✅ Services créés : ${services.length} au total`);
 
-  // 2. Création de l'Administrateur
-  const adminEmail = 'admin@edoteam.tg';
-  const hashedPassword = await bcrypt.hash('Admin@edoteam2025', 10);
+  // 2. Création du Super Administrateur
+  const adminEmail = 'arnaudakoenoafedikou@gmail.com';
+  const adminPassword = '@Arnaud@62141#';
+  const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
   const admin = await prisma.user.upsert({
     where: { email: adminEmail },
     update: {
       passwordHash: hashedPassword,
       role: 'ADMIN',
+      nom: 'AFEDIKOU',
+      prenom: 'Akoèno Arnaud',
+      emailVerified: true,
     },
     create: {
       email: adminEmail,
-      nom: 'Admin',
-      prenom: 'EDOTEAM',
+      nom: 'AFEDIKOU',
+      prenom: 'Arnaud Akoèno',
       passwordHash: hashedPassword,
       role: 'ADMIN',
       emailVerified: true,
     },
   });
 
-  console.log('✅ Administrateur créé/vérifié');
+  console.log('✅ Super Administrateur créé/vérifié');
   console.log(`   Email    : ${admin.email}`);
+  console.log(`   Password : ${adminPassword}`);
 
   // 3. Création de quelques Prestataires de test (CDC v4.0 Validation)
   const providersData = [
@@ -88,7 +93,7 @@ async function main() {
     const { services: providerServices, ...userData } = p;
     const user = await prisma.user.upsert({
       where: { email: p.email },
-      update: {},
+      update: { verificationStatus: 'VERIFIED' },
       create: {
         ...userData,
         passwordHash: genericPassword,

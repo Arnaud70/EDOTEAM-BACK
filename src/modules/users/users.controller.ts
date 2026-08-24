@@ -16,8 +16,26 @@ export class UsersController {
   @ApiOperation({ summary: 'Recherche avancée de prestataires (CDC v4.0)' })
   @ApiQuery({ name: 'q', required: false, description: 'Terme de recherche' })
   @ApiQuery({ name: 'offset', required: false, description: 'Pagination offset' })
-  search(@Query('q') q: string, @Query('offset') offset: string) {
-    return this.usersService.searchProviders(q, parseInt(offset) || 0);
+  search(@Query('q') q: string, @Query('offset') offset: string, @Query('latitude') latitude: string, @Query('longitude') longitude: string) {
+    return this.usersService.searchProviders(q, parseInt(offset) || 0, Number(latitude), Number(longitude));
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('favorites')
+  getFavorites(@Request() req: any) {
+    return this.usersService.getFavorites(req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('favorites/:providerId')
+  addFavorite(@Request() req: any, @Param('providerId') providerId: string) {
+    return this.usersService.addFavorite(req.user.id, providerId);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete('favorites/:providerId')
+  removeFavorite(@Request() req: any, @Param('providerId') providerId: string) {
+    return this.usersService.removeFavorite(req.user.id, providerId);
   }
 
   @UseGuards(JwtAuthGuard)

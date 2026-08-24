@@ -21,6 +21,23 @@ export const buildWelcomeNotificationContent = (role: string) => {
   return { title, message };
 };
 
+export const isProfileComplete = (user: {
+  role?: string;
+  telephone?: string | null;
+  localisation?: string | null;
+  titreProfessionnel?: string | null;
+}) => {
+  if (!user || user.role === 'ADMIN') {
+    return true;
+  }
+
+  const hasPhone = !!user.telephone && user.telephone.trim().length > 0;
+  const hasLocation = !!user.localisation && user.localisation.trim().length > 0;
+  const hasProfessionalTitle = user.role !== 'PRESTATAIRE' || (!!user.titreProfessionnel && user.titreProfessionnel.trim().length > 0);
+
+  return hasPhone && hasLocation && hasProfessionalTitle;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -69,6 +86,8 @@ export class AuthService {
         localisation: dto.region,
         titreProfessionnel: dto.specialite,
         telephone: dto.telephone,
+        latitude: dto.latitude,
+        longitude: dto.longitude,
       },
     });
 

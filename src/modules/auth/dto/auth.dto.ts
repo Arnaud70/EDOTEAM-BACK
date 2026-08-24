@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, ValidateIf } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, ValidateIf, IsNumber } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterDto {
@@ -43,6 +43,14 @@ export class RegisterDto {
   @IsNotEmpty({ message: 'La spécialité est obligatoire pour les prestataires' })
   @IsString({ message: 'La spécialité doit être une chaîne de caractères' })
   specialite?: string;
+
+  @ApiPropertyOptional({ example: 6.1725 })
+  @IsOptional() @IsNumber()
+  latitude?: number;
+
+  @ApiPropertyOptional({ example: 1.2314 })
+  @IsOptional() @IsNumber()
+  longitude?: number;
 }
 
 export class LoginDto {

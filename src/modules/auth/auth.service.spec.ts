@@ -1,4 +1,4 @@
-import { buildWelcomeNotificationContent } from './auth.service';
+import { buildWelcomeNotificationContent, isProfileComplete } from './auth.service';
 
 describe('buildWelcomeNotificationContent', () => {
   it('returns a detailed welcome message for clients', () => {
@@ -17,5 +17,14 @@ describe('buildWelcomeNotificationContent', () => {
     expect(content.message).toContain('services');
     expect(content.message).toContain('disponibilités');
     expect(content.message).toContain('documents');
+  });
+});
+
+describe('isProfileComplete', () => {
+  it('blocks access until mandatory profile details are filled', () => {
+    expect(isProfileComplete({ role: 'CLIENT', telephone: '', localisation: '' })).toBe(false);
+    expect(isProfileComplete({ role: 'CLIENT', telephone: '+228 90 00 00 00', localisation: 'Lomé' })).toBe(true);
+    expect(isProfileComplete({ role: 'PRESTATAIRE', telephone: '+228 90 00 00 00', localisation: 'Lomé', titreProfessionnel: '' })).toBe(false);
+    expect(isProfileComplete({ role: 'PRESTATAIRE', telephone: '+228 90 00 00 00', localisation: 'Lomé', titreProfessionnel: 'Plomberie' })).toBe(true);
   });
 });

@@ -12,26 +12,42 @@ export class NotificationsService {
   ) {}
 
   async create(data: { userId: string; title: string; message: string; type: string }) {
+    if (!data?.userId || !data?.title || !data?.message || !data?.type) {
+      this.logger.warn('Notification ignorée: données incomplètes.');
+      return null;
+    }
+
+    const user = await this.prisma.user.findUnique({ where: { id: data.userId } });
+    if (!user) {
+      this.logger.warn(`Notification ignorée pour userId inconnu: ${data.userId}`);
+      return null;
+    }
+
     const notification = await this.prisma.notification.create({
-      data,
+      data: {
+        userId: data.userId,
+        title: data.title,
+        message: data.message,
+        type: data.type,
+      },
     });
 
-    // Envoyer l'email uniquement si la configuration SMTP est réelle
     try {
-      const user = await this.prisma.user.findUnique({ where: { id: data.userId } });
-      if (user && user.email &&
-          (process.env.SMTP_HOST || process.env.MAIL_HOST) &&
-          (process.env.SMTP_USER || process.env.MAIL_USER) &&
-          (process.env.SMTP_PASS || process.env.MAIL_PASSWORD)) {
+      const smtpHost = process.env.SMTP_HOST || process.env.MAIL_HOST;
+      const smtpUser = process.env.SMTP_USER || process.env.MAIL_USER;
+      const smtpPass = process.env.SMTP_PASS || process.env.MAIL_PASSWORD;
+
+      if (user.email && smtpHost && smtpUser && smtpPass) {
         await this.mailerService.sendMail({
           to: user.email,
-          subject: `[Togo Connect] ${data.title}`,
-          text: `${data.message}\n\nConnectez-vous sur Togo Connect pour en savoir plus.`,
+          subject: `[EDOTEAM] ${data.title}`,
+          text: `${data.message}\n\nConnectez-vous sur EDOTEAM pour en savoir plus.`,
         });
         this.logger.log(`Email envoyé à ${user.email} pour la notification: ${data.title}`);
       }
     } catch (error) {
-      this.logger.error(`Erreur lors de l'envoi de l'email de notification: ${error.message}`);
+      const errMessage = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Erreur lors de l'envoi de l'email de notification: ${errMessage}`);
     }
 
     return notification;

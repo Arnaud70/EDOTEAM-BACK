@@ -25,6 +25,10 @@ model User {
   telephone             String?              @db.VarChar(20)
   updatedAt             DateTime             @updatedAt @map("updated_at")
   titreProfessionnel    String?              @map("titre_professionnel")
+  verificationStatus    VerificationStatus   @default(PENDING) @map("verification_status")
+  rejectionReason       String?              @map("rejection_reason")
+  latitude              Float?
+  longitude             Float?
   activityLogs          ActivityLog[]
   availabilities        Availability[]
   givenReviews          Avis[]               @relation("ClientReviews")
@@ -40,6 +44,21 @@ model User {
   resolvedReports       Report[]             @relation("Resolver")
   wallet                Wallet?
   notifications         Notification[]
+  favorites             Favorite[]        @relation("UserFavorites")
+  favoritedBy           Favorite[]        @relation("ProviderFavorites")
+}
+
+model Favorite {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  providerId   String   @map("provider_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  user         User     @relation("UserFavorites", fields: [userId], references: [id], onDelete: Cascade)
+  provider     User     @relation("ProviderFavorites", fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, providerId])
+  @@index([providerId])
+  @@map("favorites")
 }
 
 model Service {
@@ -185,6 +204,8 @@ model Booking {
   status        BookingStatus @default(PENDING)
   totalAmount   Decimal       @map("total_amount")
   address       String
+  interventionLatitude  Float? @map("intervention_latitude")
+  interventionLongitude Float? @map("intervention_longitude")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
   client        User          @relation("ClientBookings", fields: [clientId], references: [id])
@@ -236,6 +257,12 @@ enum Role {
   CLIENT
   PRESTATAIRE
   ADMIN
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
 }
 
 enum DayOfWeek {

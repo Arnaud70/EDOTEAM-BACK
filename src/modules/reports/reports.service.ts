@@ -55,6 +55,7 @@ export class ReportsService {
         reporter: { select: { id: true, nom: true, prenom: true, email: true } },
         review: true,
         message: true,
+        resolver: { select: { id: true, nom: true, prenom: true } },
       },
     });
 
@@ -62,6 +63,7 @@ export class ReportsService {
       id: r.id,
       type: r.reviewId ? 'AVIS' : (r.messageId ? 'MESSAGE' : 'USER'),
       reason: r.motif,
+      description: r.description || '',
       status: r.status,
       createdAt: r.createdAt,
       reporter: {
@@ -69,6 +71,7 @@ export class ReportsService {
         prenom: r.reporter.prenom || '',
       },
       targetId: r.targetUserId || r.reviewId || r.messageId || 'N/A',
+      resolvedBy: r.resolver ? `${r.resolver.prenom || ''} ${r.resolver.nom || ''}`.trim() : null,
     }));
   }
 

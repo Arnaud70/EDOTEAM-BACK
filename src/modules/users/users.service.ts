@@ -1,10 +1,31 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
+import { promises as fs } from 'fs';
+import { join } from 'path';
 
 @Injectable()
 export class UsersService {
   constructor(private prisma: PrismaService) {}
+
+  private normalizeMediaUrl(url: string) {
+    if (!url || typeof url !== 'string') {
+      return null;
+    }
+
+    const trimmed = url.trim();
+    if (!trimmed) return null;
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+
+    if (trimmed.startsWith('/')) {
+      return `${process.env.BACKEND_URL || 'http://localhost:3000'}${trimmed}`;
+    }
+
+    return `${process.env.BACKEND_URL || 'http://localhost:3000'}/${trimmed}`;
+  }
 
   async getProfile(userId: string) {
     const user = await this.prisma.user.findUnique({
@@ -28,6 +49,12 @@ export class UsersService {
 
   async updateProfile(userId: string, data: any) {
     const updateData: any = { ...data };
+
+    if (Object.prototype.hasOwnProperty.call(updateData, 'photoUrl')) {
+      const normalizedPhoto = updateData.photoUrl === '' ? null : this.normalizeMediaUrl(updateData.photoUrl);
+      updateData.photoUrl = normalizedPhoto;
+    }
+
     if (updateData.motDePasse) {
       const salt = await bcrypt.genSalt();
       updateData.passwordHash = await bcrypt.hash(updateData.motDePasse, salt);
@@ -42,7 +69,7 @@ export class UsersService {
 
   async getAllPrestataires() {
     return this.prisma.user.findMany({
-      where: { role: 'PRESTATAIRE', deletedAt: null },
+      where: { role: 'PRESTATAIRE', deletedAt: null, verificationStatus: 'VERIFIED' },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -50,8 +77,11 @@ export class UsersService {
         prenom: true,
         titreProfessionnel: true,
         localisation: true,
+        latitude: true,
+        longitude: true,
         photoUrl: true,
         emailVerified: true,
+        verificationStatus: true,
         bio: true,
         services: {
           include: { service: { select: { id: true, nom: true } } },
@@ -67,7 +97,7 @@ export class UsersService {
 
   async getProviderById(providerId: string) {
     const provider = await this.prisma.user.findUnique({
-      where: { id: providerId, role: 'PRESTATAIRE' },
+      where: { id: providerId, role: 'PRESTATAIRE', verificationStatus: 'VERIFIED' },
       select: {
         id: true,
         nom: true,
@@ -76,8 +106,12 @@ export class UsersService {
         titreProfessionnel: true,
         bio: true,
         localisation: true,
+        latitude: true,
+        longitude: true,
         photoUrl: true,
         emailVerified: true,
+        verificationStatus: true,
+        rejectionReason: true,
         createdAt: true,
         services: {
           include: { service: true }
@@ -105,34 +139,81 @@ export class UsersService {
   }
 
   async addMedia(userId: string, data: { url: string; type: 'PROFILE' | 'WORK' | 'DOCUMENT' }) {
+    const normalizedUrl = this.normalizeMediaUrl(data.url);
+
+    if (!normalizedUrl) {
+      throw new Error('Une URL de média valide est requise.');
+    }
+
     return this.prisma.media.create({
       data: {
         userId,
-        url: data.url,
+        url: normalizedUrl,
         type: data.type,
       },
     });
   }
 
+  async getFavorites(userId: string) {
+    return this.prisma.favorite.findMany({
+      where: { userId },
+      include: { provider: { include: { services: { include: { service: true } }, receivedReviews: { select: { note: true } } } } },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async addFavorite(userId: string, providerId: string) {
+    if (userId === providerId) throw new Error('Vous ne pouvez pas ajouter votre propre profil aux favoris.');
+    return this.prisma.favorite.upsert({
+      where: { userId_providerId: { userId, providerId } },
+      create: { userId, providerId },
+      update: {},
+    });
+  }
+
+  async removeFavorite(userId: string, providerId: string) {
+    return this.prisma.favorite.deleteMany({ where: { userId, providerId } });
+  }
+
   async deleteMedia(userId: string, mediaId: string) {
+    const media = await this.prisma.media.findUnique({
+      where: { id: mediaId },
+    });
+
+    if (!media || media.userId !== userId) {
+      throw new NotFoundException('Média introuvable ou non autorisé à supprimer.');
+    }
+
+    if (media.url.includes('/uploads/')) {
+      try {
+        const localPath = media.url.replace(`${process.env.BACKEND_URL || 'http://localhost:3000'}`, '');
+        const filePath = join(process.cwd(), 'uploads', localPath.split('/uploads/')[1]);
+        await fs.unlink(filePath);
+      } catch (error) {
+        // Fichier déjà absent: ne pas bloquer la suppression de l'enregistrement
+      }
+    }
+
     return this.prisma.media.delete({
       where: {
         id: mediaId,
-        userId, // Sécurité: on ne peut supprimer que ses propres médias
+        userId,
       },
     });
   }
-  async searchProviders(query: string, offset: number = 0) {
+  async searchProviders(query: string, offset: number = 0, latitude?: number, longitude?: number) {
     const limit = 20;
     const searchTerm = query ? query.trim() : '';
 
     let ids: string[] = [];
 
+    const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
+
     if (searchTerm === '') {
       // Si pas de recherche, on prend juste les derniers prestataires inscrits
       const providers = await this.prisma.user.findMany({
-        where: { role: 'PRESTATAIRE', deletedAt: null },
-        take: limit,
+        where: { role: 'PRESTATAIRE', deletedAt: null, verificationStatus: 'VERIFIED' },
+        take: hasCoordinates ? 100 : limit,
         skip: offset,
         select: { id: true },
         orderBy: { createdAt: 'desc' }
@@ -145,6 +226,7 @@ export class UsersService {
         FROM "User" u
         WHERE u.role = 'PRESTATAIRE'
           AND u.deleted_at IS NULL
+          AND u.verification_status = 'VERIFIED'
           AND (
             to_tsvector('french', COALESCE(u.nom, '') || ' ' || COALESCE(u.prenom, '') || ' ' || COALESCE(u.bio, '') || ' ' || COALESCE(u.titre_professionnel, '')) @@ plainto_tsquery('french', ${searchTerm})
             OR EXISTS (
@@ -154,7 +236,7 @@ export class UsersService {
                 AND s.nom ILIKE ${'%' + searchTerm + '%'}
             )
           )
-        LIMIT ${limit} OFFSET ${offset}
+        LIMIT ${hasCoordinates ? 100 : limit} OFFSET ${offset}
       `;
       ids = rawResults.map(r => r.id);
     }
@@ -182,7 +264,7 @@ export class UsersService {
     });
 
     // 3. Formater pour le frontend (calculer la moyenne des notes)
-    return providers.map(p => {
+    const results = providers.map(p => {
       const avgRating = p.receivedReviews.length > 0 
         ? p.receivedReviews.reduce((acc, r) => acc + r.note, 0) / p.receivedReviews.length 
         : 5.0;
@@ -192,6 +274,25 @@ export class UsersService {
         rating: avgRating.toFixed(1),
         nbReviews: p.receivedReviews.length
       };
-    }).sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)); // Garder l'ordre du ranking SQL
+    });
+
+    if (!hasCoordinates) {
+      return results.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+    }
+
+    const toRadians = (value: number) => value * Math.PI / 180;
+    const distanceInKm = (provider: typeof results[number]) => {
+      if (provider.latitude == null || provider.longitude == null) return Number.POSITIVE_INFINITY;
+      const deltaLatitude = toRadians(provider.latitude - latitude!);
+      const deltaLongitude = toRadians(provider.longitude - longitude!);
+      const haversine = Math.sin(deltaLatitude / 2) ** 2
+        + Math.cos(toRadians(latitude!)) * Math.cos(toRadians(provider.latitude)) * Math.sin(deltaLongitude / 2) ** 2;
+      return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+    };
+
+    return results
+      .map(provider => ({ ...provider, distanceKm: distanceInKm(provider) }))
+      .sort((a, b) => a.distanceKm - b.distanceKm)
+      .slice(0, limit);
   }
 }

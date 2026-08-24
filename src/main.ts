@@ -5,6 +5,7 @@ import { join } from 'path';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
+import compression from 'compression';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { ResponseInterceptor } from './common/interceptors/response.interceptor';
@@ -19,6 +20,9 @@ async function bootstrap() {
 
   // Cookie parser pour les refresh tokens
   app.use(cookieParser());
+
+  // Compression des réponses HTTP (gzip) pour réduire la bande passante
+  app.use(compression());
 
   // Serve static files from the uploads directory
   app.useStaticAssets(join(process.cwd(), 'uploads'), {
@@ -61,8 +65,8 @@ async function bootstrap() {
 
   // Swagger
   const config = new DocumentBuilder()
-    .setTitle('Togo Connect API')
-    .setDescription('API de la plateforme de mise en relation Togo Connect')
+    .setTitle('EDOTEAM API')
+    .setDescription('API de la plateforme de mise en relation EDOTEAM')
     .setVersion('1.0')
     .addBearerAuth(
       { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },

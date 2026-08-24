@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Request, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Body, Param, Request, UseGuards, Query } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { BookingStatus } from '@prisma/client';
@@ -16,7 +16,14 @@ export class BookingsController {
       date: new Date(dto.date),
       startTime: new Date(dto.startTime),
       endTime: new Date(dto.endTime),
+      interventionLatitude: dto.interventionLatitude == null ? undefined : Number(dto.interventionLatitude),
+      interventionLongitude: dto.interventionLongitude == null ? undefined : Number(dto.interventionLongitude),
     });
+  }
+
+  @Get('provider/:prestataireId')
+  getBusySlots(@Param('prestataireId') prestataireId: string, @Query('date') date?: string) {
+    return this.bookingsService.getBusySlots(prestataireId, date);
   }
 
   @Get()
@@ -25,7 +32,7 @@ export class BookingsController {
   }
 
   @Patch(':id/status')
-  updateStatus(@Param('id') id: string, @Body('status') status: BookingStatus) {
-    return this.bookingsService.updateStatus(id, status);
+  updateStatus(@Request() req, @Param('id') id: string, @Body('status') status: BookingStatus) {
+    return this.bookingsService.updateStatus(id, status, req.user.id);
   }
 }

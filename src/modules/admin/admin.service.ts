@@ -97,6 +97,8 @@ export class AdminService {
         role: true, 
         createdAt: true, 
         emailVerified: true,
+        verificationStatus: true,
+        rejectionReason: true,
         deletedAt: true 
       },
       orderBy: { createdAt: 'desc' },
@@ -115,17 +117,39 @@ export class AdminService {
     return this.reportsService.resolve(reportId, adminId, status);
   }
 
+  async verifyUser(userId: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        verificationStatus: 'VERIFIED',
+        rejectionReason: null,
+        emailVerified: true,
+      },
+    });
+  }
+
+  async rejectUser(userId: string, reason: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        verificationStatus: 'REJECTED',
+        rejectionReason: reason,
+        emailVerified: false,
+      },
+    });
+  }
+
   async suspendUser(userId: string) {
     return this.prisma.user.update({
       where: { id: userId },
-      data: { deletedAt: new Date() },
+      data: { deletedAt: new Date(), verificationStatus: 'REJECTED' },
     });
   }
 
   async restoreUser(userId: string) {
     return this.prisma.user.update({
       where: { id: userId },
-      data: { deletedAt: null },
+      data: { deletedAt: null, verificationStatus: 'PENDING' },
     });
   }
 

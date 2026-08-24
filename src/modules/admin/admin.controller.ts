@@ -48,6 +48,18 @@ export class AdminController {
     return this.adminService.resolveReport(id, req.user.id, status);
   }
 
+  @ApiOperation({ summary: 'Valider le profil d’un prestataire' })
+  @Patch('users/:id/verify')
+  verifyUser(@Param('id') id: string) {
+    return this.adminService.verifyUser(id);
+  }
+
+  @ApiOperation({ summary: 'Refuser un profil inapproprié ou non conforme' })
+  @Patch('users/:id/reject')
+  rejectUser(@Param('id') id: string, @Body('reason') reason?: string) {
+    return this.adminService.rejectUser(id, reason || 'Profil non conforme aux conditions de la plateforme.');
+  }
+
   @ApiOperation({ summary: 'Suspendre un utilisateur (soft delete)' })
   @Patch('users/:id/suspend')
   suspend(@Param('id') id: string) {

@@ -58,11 +58,10 @@ export class UploadController {
       await fs.mkdir(uploadsDir, { recursive: true });
 
       const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-      const ext = extname(file.originalname);
-      const filename = `${file.fieldname}-${uniqueSuffix}${ext}`;
+      const ext = extname(file.originalname).toLowerCase();
+      const filename = `upload-${uniqueSuffix}${ext}`;
       const filePath = join(uploadsDir, filename);
 
-      // Écrire le fichier manuellement (plus robuste sur Windows)
       await fs.writeFile(filePath, file.buffer);
 
       const protocol = req.protocol;
