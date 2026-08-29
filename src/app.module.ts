@@ -4,6 +4,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
 import { MailerModule } from '@nestjs-modules/mailer';
 import { CacheModule } from '@nestjs/cache-manager';
+import { buildCacheOptions } from './common/cache/cache.config';
 
 // Core
 import { PrismaModule } from './prisma/prisma.module';
@@ -33,10 +34,9 @@ import { PaymentsModule } from './modules/payments/payments.module';
       ttl: 60000,
       limit: 100,
     }]),
-    CacheModule.register({
+    CacheModule.registerAsync({
       isGlobal: true,
-      ttl: 300000, // 5 minutes
-      max: 100,
+      useFactory: buildCacheOptions,
     }),
     MailerModule.forRootAsync({
       imports: [ConfigModule],

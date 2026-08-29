@@ -20,6 +20,7 @@ model User {
   nom                   String
   passwordHash          String               @map("password_hash")
   photoUrl              String?              @map("photo_url")
+  genre                 Genre?
   prenom                String?
   role                  Role                 @default(CLIENT)
   telephone             String?              @db.VarChar(20)
@@ -46,6 +47,8 @@ model User {
   notifications         Notification[]
   favorites             Favorite[]        @relation("UserFavorites")
   favoritedBy           Favorite[]        @relation("ProviderFavorites")
+  authTokens            AuthToken[]
+  authThrottles         AuthThrottle[]
 }
 
 model Favorite {
@@ -212,6 +215,7 @@ model Booking {
   prestataire   User          @relation("PrestataireBookings", fields: [prestataireId], references: [id])
   service       Service       @relation(fields: [serviceId], references: [id])
 
+  @@index([prestataireId, status, startTime, endTime])
   @@map("bookings")
 }
 
@@ -265,6 +269,11 @@ enum VerificationStatus {
   REJECTED
 }
 
+enum Genre {
+  HOMME
+  FEMME
+}
+
 enum DayOfWeek {
   MONDAY
   TUESDAY
@@ -300,4 +309,41 @@ enum TransactionType {
   WITHDRAWAL
   PAYMENT
   REFUND
+}
+
+enum AuthTokenType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+model AuthToken {
+  id        String        @id @default(uuid())
+  userId    String        @map("user_id")
+  tokenHash String        @map("token_hash")
+  type      AuthTokenType
+  attempts  Int           @default(0)
+  expiresAt DateTime      @map("expires_at")
+  usedAt    DateTime?     @map("used_at")
+  createdAt DateTime      @default(now()) @map("created_at")
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tokenHash])
+  @@index([userId, type])
+  @@map("auth_tokens")
+}
+
+// Verrouillage anti-force-brute des codes OTP : cumule les échecs par utilisateur/type
+// et bloque pendant 1 h après trop de tentatives incorrectes.
+model AuthThrottle {
+  id          String        @id @default(uuid())
+  userId      String        @map("user_id")
+  type        AuthTokenType
+  failedCount Int           @default(0) @map("failed_count")
+  windowStart DateTime      @default(now()) @map("window_start")
+  lockedUntil DateTime?     @map("locked_until")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("auth_throttles")
 }

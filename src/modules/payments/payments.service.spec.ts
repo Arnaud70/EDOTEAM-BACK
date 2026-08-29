@@ -2,39 +2,27 @@ import { PaymentsService } from './payments.service';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import Stripe from 'stripe';
 
 jest.mock('stripe', () => {
   return jest.fn().mockImplementation(() => ({
-    checkout: {
-      sessions: {
-        create: jest.fn(),
-      },
-    },
-    webhooks: {
-      constructEvent: jest.fn(),
-    },
+    checkout: { sessions: { create: jest.fn(), retrieve: jest.fn() } },
+    webhooks: { constructEvent: jest.fn() },
   }));
 });
 
+const makeConfig = (overrides: Record<string, string> = {}) =>
+  ({
+    get: jest.fn((key: string) => ({
+      STRIPE_SECRET_KEY: 'sk_test_123',
+      STRIPE_CURRENCY: 'xof',
+      FRONTEND_URL: 'http://localhost:5173',
+      KKIAPAY_PAYMENT_URL: 'https://checkout.kkiapay.me/',
+      ...overrides,
+    }[key])),
+  } as unknown as ConfigService);
+
 describe('PaymentsService', () => {
-  it('creates a checkout session from a booking', async () => {
-    const createSession = jest.fn().mockResolvedValue({
-      id: 'cs_test_123',
-      url: 'https://checkout.stripe.com/pay/cs_test_123',
-    });
-
-    (Stripe as unknown as jest.Mock).mockImplementation(() => ({
-      checkout: {
-        sessions: {
-          create: createSession,
-        },
-      },
-      webhooks: {
-        constructEvent: jest.fn(),
-      },
-    }));
-
+  it('génère un lien de paiement à partir d’une réservation', async () => {
     const prisma = {
       booking: {
         findUnique: jest.fn().mockResolvedValue({
@@ -42,30 +30,40 @@ describe('PaymentsService', () => {
           clientId: 'client-1',
           totalAmount: 1500,
           service: { nom: 'Plomberie' },
-          client: { email: 'client@example.com' },
+          client: { id: 'client-1', email: 'client@example.com' },
         }),
-      },
-      booking: {
         update: jest.fn().mockResolvedValue({}),
       },
     } as unknown as PrismaService;
 
-    const notifications = {
-      create: jest.fn(),
-    } as unknown as NotificationsService;
+    const notifications = { create: jest.fn() } as unknown as NotificationsService;
 
-    const config = {
-      get: jest.fn((key: string) => ({
-        STRIPE_SECRET_KEY: 'sk_test_123',
-        STRIPE_CURRENCY: 'xof',
-        FRONTEND_URL: 'http://localhost:5173',
-      }[key])),
-    } as unknown as ConfigService;
-
-    const service = new PaymentsService(prisma, config, notifications);
+    const service = new PaymentsService(prisma, makeConfig(), notifications);
     const result = await service.createCheckoutSession('booking-1', 'client-1');
 
-    expect(createSession).toHaveBeenCalled();
-    expect(result.url).toContain('checkout.stripe');
+    expect(prisma.booking.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'booking-1' } }),
+    );
+    expect(result.provider).toBe('kkiapay');
+    expect(result.reference).toBe('booking-booking-1');
+    expect(result.url).toContain('checkout.kkiapay.me');
+    expect(result.url).toContain('amount=1500');
+    expect(result.url).toContain('reference=booking-booking-1');
+  });
+
+  it('utilise un montant par défaut si la réservation est introuvable', async () => {
+    const prisma = {
+      booking: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
+    } as unknown as PrismaService;
+
+    const service = new PaymentsService(
+      prisma,
+      makeConfig(),
+      { create: jest.fn() } as unknown as NotificationsService,
+    );
+    const result = await service.createCheckoutSession('missing', 'client-1');
+
+    expect(result.url).toContain('amount=1000');
+    expect(result.provider).toBe('kkiapay');
   });
 });

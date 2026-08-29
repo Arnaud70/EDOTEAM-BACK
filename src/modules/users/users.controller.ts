@@ -1,9 +1,10 @@
 import { Controller, Get, UseGuards, Request, Patch, Body, Param, Post, Delete, Query, UseInterceptors } from '@nestjs/common';
-import { CacheInterceptor } from '@nestjs/cache-manager';
+import { CacheInterceptor, CacheTTL } from '@nestjs/cache-manager';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 
 @ApiTags(' Utilisateurs')
@@ -12,6 +13,8 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 export class UsersController {
   constructor(private usersService: UsersService) { }
 
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(120_000)
   @Get('search')
   @ApiOperation({ summary: 'Recherche avancée de prestataires (CDC v4.0)' })
   @ApiQuery({ name: 'q', required: false, description: 'Terme de recherche' })
@@ -51,12 +54,21 @@ export class UsersController {
     return this.usersService.updateProfile(req.user.id, data);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Patch('password')
+  @ApiOperation({ summary: 'Changer son mot de passe (mot de passe actuel requis)' })
+  changePassword(@Request() req, @Body() data: ChangePasswordDto) {
+    return this.usersService.changePassword(req.user.id, data.oldPassword, data.newPassword);
+  }
+
   @UseInterceptors(CacheInterceptor)
   @Get('prestataires')
   getAllPrestataires() {
     return this.usersService.getAllPrestataires();
   }
 
+  @UseInterceptors(CacheInterceptor)
+  @CacheTTL(120_000)
   @Get('providers/:id')
   getProvider(@Param('id') id: string) {
     return this.usersService.getProviderById(id);

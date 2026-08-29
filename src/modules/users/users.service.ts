@@ -1,12 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import { containsBannedWord, BANNED_WORD_MESSAGE } from '../../common/validation/patterns';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(private prisma: PrismaService, private notificationsService: NotificationsService) {}
 
   private normalizeMediaUrl(url: string) {
     if (!url || typeof url !== 'string') {
@@ -48,23 +50,85 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, data: any) {
-    const updateData: any = { ...data };
+    const currentUser = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!currentUser) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    // Liste blanche stricte : aucun autre champ (role=ADMIN, verificationStatus,
+    // emailVerified, passwordHash, id, email...) ne peut être modifié via cet endpoint.
+    const ALLOWED_FIELDS = [
+      'prenom', 'nom', 'telephone', 'localisation',
+      'latitude', 'longitude', 'titreProfessionnel', 'bio', 'photoUrl', 'genre',
+    ] as const;
+
+    const updateData: any = {};
+    for (const field of ALLOWED_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(data, field) && data[field] !== undefined) {
+        updateData[field] = data[field];
+      }
+    }
 
     if (Object.prototype.hasOwnProperty.call(updateData, 'photoUrl')) {
-      const normalizedPhoto = updateData.photoUrl === '' ? null : this.normalizeMediaUrl(updateData.photoUrl);
-      updateData.photoUrl = normalizedPhoto;
+      updateData.photoUrl = updateData.photoUrl === '' ? null : this.normalizeMediaUrl(updateData.photoUrl);
     }
 
-    if (updateData.motDePasse) {
-      const salt = await bcrypt.genSalt();
-      updateData.passwordHash = await bcrypt.hash(updateData.motDePasse, salt);
-      delete updateData.motDePasse;
+    // Filtre de contenu inapproprié sur les champs libres visibles publiquement.
+    if (containsBannedWord(updateData.titreProfessionnel) || containsBannedWord(updateData.bio)) {
+      throw new BadRequestException(BANNED_WORD_MESSAGE);
     }
 
-    return this.prisma.user.update({
+    // Basculement de rôle limité à CLIENT <-> PRESTATAIRE. Jamais vers ADMIN.
+    if (
+      (data.role === 'CLIENT' || data.role === 'PRESTATAIRE') &&
+      currentUser.role !== 'ADMIN' &&
+      data.role !== currentUser.role
+    ) {
+      updateData.role = data.role;
+      // Un nouveau prestataire doit repasser par la validation admin.
+      updateData.verificationStatus = data.role === 'PRESTATAIRE' ? 'PENDING' : 'VERIFIED';
+    }
+
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: updateData,
     });
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { passwordHash, ...result } = updated;
+    return result;
+  }
+
+  async changePassword(userId: string, oldPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException('Utilisateur non trouvé');
+    }
+
+    const isMatch = await bcrypt.compare(oldPassword, user.passwordHash);
+    if (!isMatch) {
+      throw new UnauthorizedException('Le mot de passe actuel est incorrect');
+    }
+
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      throw new BadRequestException("Le nouveau mot de passe doit être différent de l'ancien");
+    }
+
+    const salt = await bcrypt.genSalt();
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash },
+    });
+
+    // On révoque toutes les sessions (refresh tokens) existantes après un changement de mot de passe.
+    await this.prisma.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    return { success: true, message: 'Mot de passe mis à jour avec succès.' };
   }
 
   async getAllPrestataires() {
@@ -80,6 +144,7 @@ export class UsersService {
         latitude: true,
         longitude: true,
         photoUrl: true,
+        genre: true,
         emailVerified: true,
         verificationStatus: true,
         bio: true,
@@ -109,6 +174,7 @@ export class UsersService {
         latitude: true,
         longitude: true,
         photoUrl: true,
+        genre: true,
         emailVerified: true,
         verificationStatus: true,
         rejectionReason: true,
@@ -145,13 +211,30 @@ export class UsersService {
       throw new Error('Une URL de média valide est requise.');
     }
 
-    return this.prisma.media.create({
+    const media = await this.prisma.media.create({
       data: {
         userId,
         url: normalizedUrl,
         type: data.type,
       },
     });
+
+    if (data.type === 'DOCUMENT') {
+      // Un nouveau document remet le compte en attente de vérification par un admin.
+      await this.prisma.user.update({
+        where: { id: userId },
+        data: { verificationStatus: 'PENDING', rejectionReason: null },
+      }).catch(() => undefined);
+
+      await this.notificationsService.create({
+        userId,
+        title: 'Document reçu',
+        message: 'Votre document justificatif a bien été reçu. Notre équipe va le vérifier avant de valider votre profil prestataire.',
+        type: 'DOCUMENT_RECEIVED',
+      }).catch(() => undefined);
+    }
+
+    return media;
   }
 
   async getFavorites(userId: string) {
@@ -249,7 +332,19 @@ export class UsersService {
       where: {
         id: { in: ids }
       },
-      include: {
+      select: {
+        id: true,
+        nom: true,
+        prenom: true,
+        titreProfessionnel: true,
+        bio: true,
+        localisation: true,
+        latitude: true,
+        longitude: true,
+        photoUrl: true,
+        genre: true,
+        emailVerified: true,
+        verificationStatus: true,
         services: {
           include: {
             service: true

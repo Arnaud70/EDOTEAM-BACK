@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
@@ -7,6 +7,15 @@ import { RegisterDto, LoginDto } from './dto/auth.dto';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
 import { MailerService } from '@nestjs-modules/mailer';
 import { NotificationsService } from '../notifications/notifications.service';
+import { containsBannedWord, BANNED_WORD_MESSAGE } from '../../common/validation/patterns';
+import { AuthTokensService } from './auth-tokens.service';
+
+export const EMAIL_NOT_VERIFIED_MESSAGE =
+  "Votre adresse email n'a pas encore été vérifiée. Saisissez le code reçu par email.";
+
+// Hash bcrypt factice ("mot de passe" inconnu) utilisé pour égaliser le temps de réponse
+// du login quand l'email n'existe pas -> empêche l'énumération de comptes par timing.
+const DUMMY_PASSWORD_HASH = '$2b$10$abcdefghijklmnopqrstuv0123456789012345678901234567890123';
 
 export const buildWelcomeNotificationContent = (role: string) => {
   const isPrestataire = role === 'PRESTATAIRE';
@@ -46,10 +55,73 @@ export class AuthService {
     private activityLogs: ActivityLogsService,
     private mailerService: MailerService,
     private notificationsService: NotificationsService,
+    private authTokens: AuthTokensService,
   ) {}
+
+  private readonly logger = new Logger(AuthService.name);
 
   private isSmtpConfigured(): boolean {
     return !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
+  }
+
+  private formatTtl(): string {
+    const s = this.authTokens.ttlSeconds;
+    if (s % 60 === 0) return `${s / 60} minute${s / 60 > 1 ? 's' : ''}`;
+    if (s > 60) return `${Math.floor(s / 60)} min ${s % 60} s`;
+    return `${s} secondes`;
+  }
+
+  private otpEmailHtml(prenom: string | null, code: string, purpose: 'verification' | 'reset'): string {
+    const title = purpose === 'verification'
+      ? 'Vérification de votre adresse email'
+      : 'Réinitialisation de votre mot de passe';
+    const intro = purpose === 'verification'
+      ? 'Utilisez le code ci-dessous pour confirmer votre adresse email et activer votre compte EDOTEAM.'
+      : 'Utilisez le code ci-dessous pour définir un nouveau mot de passe. Si vous n’êtes pas à l’origine de cette demande, ignorez cet email.';
+    return `
+      <div style="font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b;">
+        <div style="background-color: #0f172a; padding: 32px 20px; text-align: center;">
+          <h1 style="color: #059669; margin: 0; font-size: 22px;">EDOTEAM</h1>
+        </div>
+        <div style="padding: 30px;">
+          <h2 style="color: #0f172a; margin-top: 0;">${title}</h2>
+          <p style="line-height: 1.6;">Bonjour ${prenom || ''},</p>
+          <p style="line-height: 1.6;">${intro}</p>
+          <div style="margin: 28px 0; text-align: center;">
+            <span style="display: inline-block; font-size: 34px; letter-spacing: 10px; font-weight: 800; color: #0f172a; background: #f1f5f9; padding: 16px 28px; border-radius: 12px;">${code}</span>
+          </div>
+          <p style="line-height: 1.6; color: #64748b; font-size: 14px;">Ce code expire dans ${this.formatTtl()}.</p>
+        </div>
+        <div style="background-color: #f1f5f9; padding: 18px; text-align: center; font-size: 12px; color: #64748b;">
+          © ${new Date().getFullYear()} EDOTEAM
+        </div>
+      </div>`;
+  }
+
+  private async sendOtpEmail(email: string, prenom: string | null, code: string, purpose: 'verification' | 'reset') {
+    if (!this.isSmtpConfigured()) {
+      this.logger.warn(`SMTP non configuré : code ${purpose} non envoyé par email à ${email}.`);
+      return;
+    }
+    const subject = purpose === 'verification'
+      ? 'EDOTEAM - Votre code de vérification'
+      : 'EDOTEAM - Votre code de réinitialisation';
+    const text = `Votre code EDOTEAM est : ${code}\n\nCe code expire dans ${this.formatTtl()}.\nNe le partagez avec personne.`;
+
+    try {
+      await this.mailerService.sendMail({
+        to: email,
+        subject,
+        text,
+        html: this.otpEmailHtml(prenom, code, purpose),
+      });
+      this.logger.log(`Code ${purpose} envoyé par email à ${email}.`);
+    } catch (error) {
+      this.logger.error(
+        `Échec d'envoi du code ${purpose} à ${email} : ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw error;
+    }
   }
 
   async register(dto: RegisterDto) {
@@ -63,14 +135,12 @@ export class AuthService {
       throw new ConflictException('Cet email est déjà utilisé');
     }
 
-    if (dto.role === 'PRESTATAIRE' && dto.specialite) {
-      const specialiteStr = dto.specialite.toLowerCase();
-      const BANNED_WORDS = ['sexe', 'drogue', 'arme', 'tueur', 'prostituee', 'escort', 'vol', 'arnaque', 'hack', 'piratage', 'drogues', 'armes', 'murder', 'sex', 'porn', 'porno', 'assassin', 'viagra', 'drog'];
-      const containsBannedWord = BANNED_WORDS.some(word => specialiteStr.includes(word));
-      
-      if (containsBannedWord) {
-        throw new BadRequestException("Le service proposé est invalide et ne respecte pas nos conditions d'utilisation et nos normes d'excellence.");
-      }
+    if (containsBannedWord(dto.nom) || containsBannedWord(dto.prenom)) {
+      throw new BadRequestException(BANNED_WORD_MESSAGE);
+    }
+
+    if (dto.role === 'PRESTATAIRE' && containsBannedWord(dto.specialite)) {
+      throw new BadRequestException(BANNED_WORD_MESSAGE);
     }
 
     const salt = await bcrypt.genSalt();
@@ -116,8 +186,6 @@ export class AuthService {
       }).catch(() => undefined);
     }
 
-    const result = await this.getTokens(user.id, user.email, user.role);
-
     try {
       await this.activityLogs.log({
         userId: user.id,
@@ -130,10 +198,34 @@ export class AuthService {
       console.error("Erreur lors de la journalisation de l'inscription:", logError);
     }
 
+    // Sans SMTP configuré (dev local), on ne peut pas vérifier l'email : on active le compte directement.
+    if (!this.isSmtpConfigured()) {
+      await this.prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
+      await this.sendWelcomeNotification(user.id, user.role);
+      return { ...(await this.getTokens(user.id, user.email, user.role)), emailVerificationRequired: false };
+    }
+
+    // Avec SMTP : on envoie un code OTP et on n'ouvre PAS de session tant que l'email n'est pas vérifié.
     try {
-      const welcomeContent = buildWelcomeNotificationContent(user.role);
+      const { code } = await this.authTokens.issueCode(user.id, 'EMAIL_VERIFICATION');
+      await this.sendOtpEmail(user.email, user.prenom, code, 'verification');
+    } catch (error) {
+      console.error("Erreur lors de l'envoi du code de vérification:", error);
+    }
+
+    return {
+      emailVerificationRequired: true,
+      email: user.email,
+      otpExpiresIn: this.authTokens.ttlSeconds,
+      message: `Un code de vérification a été envoyé à ${user.email}.`,
+    };
+  }
+
+  private async sendWelcomeNotification(userId: string, role: string) {
+    try {
+      const welcomeContent = buildWelcomeNotificationContent(role);
       await this.notificationsService.create({
-        userId: user.id,
+        userId,
         title: welcomeContent.title,
         message: welcomeContent.message,
         type: 'WELCOME',
@@ -141,11 +233,12 @@ export class AuthService {
     } catch (notificationError) {
       console.error('Erreur lors de la création de la notification de bienvenue:', notificationError);
     }
+  }
 
-    // Envoyer l'e-mail de bienvenue personnalisé uniquement si la configuration SMTP est réelle
+  private async sendWelcomeEmail(user: { email: string; prenom: string | null; role: string }) {
     try {
       if (!this.isSmtpConfigured()) {
-        return result;
+        return;
       }
 
       const isPrestataire = user.role === 'PRESTATAIRE';
@@ -216,8 +309,137 @@ export class AuthService {
     } catch (error) {
       console.error("Erreur lors de l'envoi de l'e-mail de bienvenue personnalisé:", error);
     }
+  }
 
-    return result;
+  async verifyEmail(email: string, code: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user) {
+      throw new BadRequestException('Compte introuvable.');
+    }
+    if (user.emailVerified) {
+      return { ...(await this.getTokens(user.id, user.email, user.role)), alreadyVerified: true };
+    }
+
+    await this.authTokens.consumeCode(user.id, 'EMAIL_VERIFICATION', code);
+
+    await this.prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
+
+    await this.sendWelcomeNotification(user.id, user.role);
+    await this.sendWelcomeEmail(user);
+
+    try {
+      await this.activityLogs.log({
+        userId: user.id,
+        action: 'EMAIL_VERIFIED',
+        entityType: 'USER',
+        entityId: user.id,
+      });
+    } catch (logError) {
+      console.error('Erreur lors de la journalisation de la vérification email:', logError);
+    }
+
+    return this.getTokens(user.id, user.email, user.role);
+  }
+
+  async resendVerification(email: string) {
+    const genericResponse = {
+      message: "Si un compte non vérifié correspond à cet email, un nouveau code vient d'être envoyé.",
+      otpExpiresIn: this.authTokens.ttlSeconds,
+    };
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+    if (user && !user.emailVerified && !user.deletedAt) {
+      // Si l'utilisateur est verrouillé (trop d'essais), on le lui dit clairement.
+      await this.authTokens.assertNotLocked(user.id, 'EMAIL_VERIFICATION');
+      try {
+        const { code } = await this.authTokens.issueCode(user.id, 'EMAIL_VERIFICATION');
+        await this.sendOtpEmail(user.email, user.prenom, code, 'verification');
+      } catch (error) {
+        console.error("Erreur lors du renvoi du code de vérification:", error);
+      }
+    }
+
+    return genericResponse;
+  }
+
+  async forgotPassword(email: string) {
+    const genericResponse = {
+      message: 'Si un compte correspond à cet email, un code de réinitialisation vient d’être envoyé.',
+      otpExpiresIn: this.authTokens.ttlSeconds,
+    };
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+
+    if (user && !user.deletedAt) {
+      try {
+        const { code } = await this.authTokens.issueCode(user.id, 'PASSWORD_RESET');
+        await this.sendOtpEmail(user.email, user.prenom, code, 'reset');
+        await this.activityLogs.log({
+          userId: user.id,
+          action: 'PASSWORD_RESET_REQUESTED',
+          entityType: 'USER',
+          entityId: user.id,
+        });
+      } catch (error) {
+        console.error("Erreur lors de l'envoi du code de réinitialisation:", error);
+      }
+    }
+
+    return genericResponse;
+  }
+
+  async resetPassword(email: string, code: string, newPassword: string) {
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (!user || user.deletedAt) {
+      throw new BadRequestException('Impossible de réinitialiser le mot de passe.');
+    }
+
+    await this.authTokens.consumeCode(user.id, 'PASSWORD_RESET', code);
+
+    if (await bcrypt.compare(newPassword, user.passwordHash)) {
+      throw new BadRequestException("Le nouveau mot de passe doit être différent de l'ancien.");
+    }
+
+    const salt = await bcrypt.genSalt();
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true, passwordHash },
+    });
+
+    // Toute session active est révoquée après une réinitialisation de mot de passe.
+    await this.prisma.refreshToken.updateMany({
+      where: { userId: user.id, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+
+    try {
+      await this.activityLogs.log({
+        userId: user.id,
+        action: 'PASSWORD_RESET_COMPLETED',
+        entityType: 'USER',
+        entityId: user.id,
+      });
+      if (this.isSmtpConfigured()) {
+        await this.mailerService.sendMail({
+          to: user.email,
+          subject: 'EDOTEAM • Votre mot de passe a été modifié',
+          html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px;">
+            <h2 style="color:#059669;">Mot de passe modifié</h2>
+            <p>Bonjour ${user.prenom || ''}, votre mot de passe EDOTEAM vient d'être réinitialisé le ${new Date().toLocaleString('fr-FR')}.</p>
+            <p>Si vous n'êtes pas à l'origine de cette action, contactez immédiatement le support.</p>
+          </div>`,
+        });
+      }
+    } catch (error) {
+      console.error('Erreur post-réinitialisation:', error);
+    }
+
+    return { success: true, message: 'Mot de passe réinitialisé. Vous pouvez vous connecter.' };
   }
 
   async login(dto: LoginDto) {
@@ -227,24 +449,46 @@ export class AuthService {
       where: { email },
     });
 
-    if (!user) {
+    // On effectue toujours une comparaison bcrypt (même si l'utilisateur n'existe pas)
+    // pour ne pas révéler l'existence du compte via le temps de réponse.
+    const isMatch = await bcrypt.compare(password, user?.passwordHash || DUMMY_PASSWORD_HASH);
+
+    if (!user || !isMatch) {
       throw new UnauthorizedException('Identifiants invalides');
     }
 
-    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (user.deletedAt) {
+      throw new UnauthorizedException('Ce compte a été suspendu. Contactez le support.');
+    }
 
-    if (!isMatch) {
-      throw new UnauthorizedException('Identifiants invalides');
+    if (!user.emailVerified) {
+      // Renvoi automatique d'un nouveau code pour faciliter la vérification.
+      try {
+        const { code } = await this.authTokens.issueCode(user.id, 'EMAIL_VERIFICATION');
+        await this.sendOtpEmail(user.email, user.prenom, code, 'verification');
+      } catch (error) {
+        console.error('Erreur renvoi code à la connexion:', error);
+      }
+      throw new ForbiddenException({
+        code: 'EMAIL_NOT_VERIFIED',
+        email: user.email,
+        otpExpiresIn: this.authTokens.ttlSeconds,
+        message: EMAIL_NOT_VERIFIED_MESSAGE,
+      });
     }
 
     const result = await this.getTokens(user.id, user.email, user.role);
 
-    await this.activityLogs.log({
-      userId: user.id,
-      action: 'LOGIN',
-      entityType: 'USER',
-      entityId: user.id,
-    });
+    try {
+      await this.activityLogs.log({
+        userId: user.id,
+        action: 'LOGIN',
+        entityType: 'USER',
+        entityId: user.id,
+      });
+    } catch (logError) {
+      console.error('Erreur lors de la journalisation de la connexion:', logError);
+    }
 
     try {
       await this.notificationsService.create({
@@ -336,11 +580,11 @@ export class AuthService {
 
     const [at, rt] = await Promise.all([
       this.jwtService.signAsync(jwtPayload, {
-        secret: process.env.JWT_SECRET || 'super_secret_luxe_togo',
+        secret: process.env.JWT_SECRET,
         expiresIn: '15m',
       }),
       this.jwtService.signAsync(jwtPayload, {
-        secret: process.env.JWT_REFRESH_SECRET || 'super_refresh_secret_togo',
+        secret: process.env.JWT_REFRESH_SECRET,
         expiresIn: '7d',
       }),
     ]);
@@ -358,7 +602,21 @@ export class AuthService {
 
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, nom: true, prenom: true, role: true, photoUrl: true }
+      select: {
+        id: true,
+        email: true,
+        nom: true,
+        prenom: true,
+        role: true,
+        photoUrl: true,
+        genre: true,
+        telephone: true,
+        localisation: true,
+        titreProfessionnel: true,
+        verificationStatus: true,
+        rejectionReason: true,
+        emailVerified: true,
+      }
     });
 
     return {
@@ -376,12 +634,22 @@ export class AuthService {
       where: { email },
     });
 
-    let temporaryPassword: string | undefined;
+    if (user && !user.emailVerified) {
+      // La connexion Google prouve la propriété de l'adresse : on la marque vérifiée.
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true },
+      });
+    }
+
     if (!user) {
       isNewUser = true;
-      temporaryPassword = randomBytes(12).toString('base64url').slice(0, 12);
+      // Mot de passe aléatoire non communiqué : l'utilisateur Google se connecte via Google.
+      // Pour définir un mot de passe classique, il utilisera la page Sécurité (mot de passe actuel = ce random)
+      // ou un futur flux "mot de passe oublié".
+      const randomPassword = randomBytes(32).toString('base64url');
       const salt = await bcrypt.genSalt();
-      const passwordHash = await bcrypt.hash(temporaryPassword, salt);
+      const passwordHash = await bcrypt.hash(randomPassword, salt);
 
       // Créer l'utilisateur s'il n'existe pas
       user = await this.prisma.user.create({
@@ -391,6 +659,7 @@ export class AuthService {
           prenom: prenom || 'Google',
           passwordHash,
           role: 'CLIENT', // Rôle par défaut
+          emailVerified: true, // L'adresse est déjà vérifiée par Google
         },
       });
 
@@ -409,7 +678,7 @@ export class AuthService {
       // Envoyer l'e-mail de bienvenue uniquement si la configuration SMTP est réelle
       try {
         if (!this.isSmtpConfigured()) {
-          return { ...(await this.getTokens(user.id, user.email, user.role)), isNewUser, temporaryPassword };
+          return { ...(await this.getTokens(user.id, user.email, user.role)), isNewUser };
         }
 
         await this.mailerService.sendMail({
@@ -432,7 +701,6 @@ export class AuthService {
     return {
       ...(await this.getTokens(user.id, user.email, user.role)),
       isNewUser,
-      temporaryPassword: isNewUser ? temporaryPassword : undefined,
     };
   }
 }

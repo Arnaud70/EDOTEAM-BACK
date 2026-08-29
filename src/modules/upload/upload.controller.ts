@@ -36,8 +36,8 @@ export class UploadController {
       storage: memoryStorage(),
       limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
       fileFilter: (req, file, callback) => {
-        if (!file.originalname.match(/\.(jpg|jpeg|png|gif)$/i)) {
-          return callback(new Error('Seules les images sont autorisées !'), false);
+        if (!file.originalname.match(/\.(jpg|jpeg|png|gif|pdf)$/i)) {
+          return callback(new Error('Seuls les images (jpg, png, gif) et les documents PDF sont autorisés !'), false);
         }
         callback(null, true);
       },

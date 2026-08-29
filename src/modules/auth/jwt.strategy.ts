@@ -9,7 +9,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: process.env['JWT_SECRET'] || 'super_secret_luxe_togo',
+      secretOrKey: process.env.JWT_SECRET as string,
     });
   }
 
@@ -20,6 +20,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
     if (!user) {
       throw new UnauthorizedException('Utilisateur non trouvé');
+    }
+
+    if (user.deletedAt) {
+      throw new UnauthorizedException('Compte suspendu');
     }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars

@@ -1,11 +1,12 @@
-import { Injectable } from '@nestjs/common';
-import { PrismaModule } from '../../prisma/prisma.module';
+import { Injectable, Logger } from '@nestjs/common';
 import { BookingStatus } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class BookingsService {
+  private readonly logger = new Logger(BookingsService.name);
+
   constructor(
     private prisma: PrismaService,
     private notifications: NotificationsService
@@ -70,11 +71,15 @@ export class BookingsService {
       },
     });
 
-    await this.notifications.create({
+    void this.notifications.create({
       userId: data.prestataireId,
       title: 'Nouveau rendez-vous !',
       message: `Vous avez une nouvelle demande de réservation pour le service ${booking.service.nom}.`,
       type: 'BOOKING_CREATED',
+    }).catch((error) => {
+      this.logger.error(
+        `Erreur lors de la notification de réservation: ${error instanceof Error ? error.message : String(error)}`,
+      );
     });
 
     return booking;
