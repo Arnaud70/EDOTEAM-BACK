@@ -92,6 +92,13 @@ export class UsersService {
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: updateData,
+      include: {
+        media: {
+          where: { type: 'DOCUMENT' },
+          select: { id: true, url: true, type: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+        },
+      },
     });
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -208,7 +215,7 @@ export class UsersService {
     const normalizedUrl = this.normalizeMediaUrl(data.url);
 
     if (!normalizedUrl) {
-      throw new Error('Une URL de média valide est requise.');
+      throw new BadRequestException('Une URL de média valide est requise.');
     }
 
     const media = await this.prisma.media.create({

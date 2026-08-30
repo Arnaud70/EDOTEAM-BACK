@@ -186,31 +186,33 @@ export class AuthService {
       }).catch(() => undefined);
     }
 
-    try {
-      await this.activityLogs.log({
-        userId: user.id,
-        action: 'REGISTER',
-        entityType: 'USER',
-        entityId: user.id,
-        metadata: { role: user.role },
-      });
-    } catch (logError) {
+    // Journalisation en tâche de fond : ne doit jamais retarder la réponse HTTP.
+    this.activityLogs.log({
+      userId: user.id,
+      action: 'REGISTER',
+      entityType: 'USER',
+      entityId: user.id,
+      metadata: { role: user.role },
+    }).catch((logError) => {
       console.error("Erreur lors de la journalisation de l'inscription:", logError);
-    }
+    });
 
     // Sans SMTP configuré (dev local), on ne peut pas vérifier l'email : on active le compte directement.
     if (!this.isSmtpConfigured()) {
       await this.prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
-      await this.sendWelcomeNotification(user.id, user.role);
+      this.sendWelcomeNotification(user.id, user.role);
       return { ...(await this.getTokens(user.id, user.email, user.role)), emailVerificationRequired: false };
     }
 
     // Avec SMTP : on envoie un code OTP et on n'ouvre PAS de session tant que l'email n'est pas vérifié.
+    // L'envoi de l'email (SMTP peut être lent) ne doit pas bloquer la réponse HTTP.
     try {
       const { code } = await this.authTokens.issueCode(user.id, 'EMAIL_VERIFICATION');
-      await this.sendOtpEmail(user.email, user.prenom, code, 'verification');
+      this.sendOtpEmail(user.email, user.prenom, code, 'verification').catch((error) => {
+        console.error("Erreur lors de l'envoi du code de vérification:", error);
+      });
     } catch (error) {
-      console.error("Erreur lors de l'envoi du code de vérification:", error);
+      console.error("Erreur lors de la génération du code de vérification:", error);
     }
 
     return {
@@ -325,19 +327,17 @@ export class AuthService {
 
     await this.prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
 
-    await this.sendWelcomeNotification(user.id, user.role);
-    await this.sendWelcomeEmail(user);
-
-    try {
-      await this.activityLogs.log({
-        userId: user.id,
-        action: 'EMAIL_VERIFIED',
-        entityType: 'USER',
-        entityId: user.id,
-      });
-    } catch (logError) {
+    // Notification, email de bienvenue et journalisation : en tâche de fond, ne bloquent pas la réponse.
+    this.sendWelcomeNotification(user.id, user.role);
+    this.sendWelcomeEmail(user);
+    this.activityLogs.log({
+      userId: user.id,
+      action: 'EMAIL_VERIFIED',
+      entityType: 'USER',
+      entityId: user.id,
+    }).catch((logError) => {
       console.error('Erreur lors de la journalisation de la vérification email:', logError);
-    }
+    });
 
     return this.getTokens(user.id, user.email, user.role);
   }
@@ -355,9 +355,11 @@ export class AuthService {
       await this.authTokens.assertNotLocked(user.id, 'EMAIL_VERIFICATION');
       try {
         const { code } = await this.authTokens.issueCode(user.id, 'EMAIL_VERIFICATION');
-        await this.sendOtpEmail(user.email, user.prenom, code, 'verification');
+        this.sendOtpEmail(user.email, user.prenom, code, 'verification').catch((error) => {
+          console.error("Erreur lors du renvoi du code de vérification:", error);
+        });
       } catch (error) {
-        console.error("Erreur lors du renvoi du code de vérification:", error);
+        console.error("Erreur lors de la génération du code de vérification:", error);
       }
     }
 
@@ -375,15 +377,17 @@ export class AuthService {
     if (user && !user.deletedAt) {
       try {
         const { code } = await this.authTokens.issueCode(user.id, 'PASSWORD_RESET');
-        await this.sendOtpEmail(user.email, user.prenom, code, 'reset');
-        await this.activityLogs.log({
+        this.sendOtpEmail(user.email, user.prenom, code, 'reset').catch((error) => {
+          console.error("Erreur lors de l'envoi du code de réinitialisation:", error);
+        });
+        this.activityLogs.log({
           userId: user.id,
           action: 'PASSWORD_RESET_REQUESTED',
           entityType: 'USER',
           entityId: user.id,
-        });
+        }).catch(() => undefined);
       } catch (error) {
-        console.error("Erreur lors de l'envoi du code de réinitialisation:", error);
+        console.error("Erreur lors de la génération du code de réinitialisation:", error);
       }
     }
 
@@ -462,12 +466,14 @@ export class AuthService {
     }
 
     if (!user.emailVerified) {
-      // Renvoi automatique d'un nouveau code pour faciliter la vérification.
+      // Renvoi automatique d'un nouveau code pour faciliter la vérification (en tâche de fond).
       try {
         const { code } = await this.authTokens.issueCode(user.id, 'EMAIL_VERIFICATION');
-        await this.sendOtpEmail(user.email, user.prenom, code, 'verification');
+        this.sendOtpEmail(user.email, user.prenom, code, 'verification').catch((error) => {
+          console.error('Erreur renvoi code à la connexion:', error);
+        });
       } catch (error) {
-        console.error('Erreur renvoi code à la connexion:', error);
+        console.error('Erreur génération code à la connexion:', error);
       }
       throw new ForbiddenException({
         code: 'EMAIL_NOT_VERIFIED',
@@ -479,48 +485,43 @@ export class AuthService {
 
     const result = await this.getTokens(user.id, user.email, user.role);
 
-    try {
-      await this.activityLogs.log({
-        userId: user.id,
-        action: 'LOGIN',
-        entityType: 'USER',
-        entityId: user.id,
-      });
-    } catch (logError) {
+    // Journalisation, notification et email d'alerte : en tâche de fond, ne doivent jamais
+    // retarder la réponse de connexion (l'envoi SMTP en particulier peut être lent).
+    this.activityLogs.log({
+      userId: user.id,
+      action: 'LOGIN',
+      entityType: 'USER',
+      entityId: user.id,
+    }).catch((logError) => {
       console.error('Erreur lors de la journalisation de la connexion:', logError);
-    }
+    });
 
-    try {
-      await this.notificationsService.create({
-        userId: user.id,
-        title: 'Bienvenue sur EDOTEAM',
-        message: 'Vous êtes connecté avec succès. Consultez rapidement vos notifications pour découvrir les nouveautés et configurer votre profil selon votre rôle.',
-        type: 'LOGIN',
-      });
-    } catch (notificationError) {
+    this.notificationsService.create({
+      userId: user.id,
+      title: 'Bienvenue sur EDOTEAM',
+      message: 'Vous êtes connecté avec succès. Consultez rapidement vos notifications pour découvrir les nouveautés et configurer votre profil selon votre rôle.',
+      type: 'LOGIN',
+    }).catch((notificationError) => {
       console.error('Erreur lors de la création de la notification de connexion:', notificationError);
-    }
+    });
 
-    // Envoyer la notification de connexion par e-mail si la configuration mail est disponible
-    try {
-      if (this.isSmtpConfigured()) {
-        await this.mailerService.sendMail({
-          to: user.email,
-          subject: 'Nouvelle connexion à votre compte EDOTEAM',
-          html: `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
-              <h2 style="color: #2196F3;">Alerte de connexion</h2>
-              <p>Bonjour ${user.prenom},</p>
-              <p>Une nouvelle connexion a été détectée sur votre compte le ${new Date().toLocaleString('fr-FR')}.</p>
-              <p>Si c'était vous, vous pouvez ignorer cet e-mail. Sinon, veuillez sécuriser votre compte immédiatement.</p>
-              <br>
-              <p>Cordialement,<br>L'équipe EDOTEAM</p>
-            </div>
-          `,
-        });
-      }
-    } catch (error) {
-      console.error("Erreur lors de l'envoi de l'e-mail de connexion:", error);
+    if (this.isSmtpConfigured()) {
+      this.mailerService.sendMail({
+        to: user.email,
+        subject: 'Nouvelle connexion à votre compte EDOTEAM',
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
+            <h2 style="color: #2196F3;">Alerte de connexion</h2>
+            <p>Bonjour ${user.prenom},</p>
+            <p>Une nouvelle connexion a été détectée sur votre compte le ${new Date().toLocaleString('fr-FR')}.</p>
+            <p>Si c'était vous, vous pouvez ignorer cet e-mail. Sinon, veuillez sécuriser votre compte immédiatement.</p>
+            <br>
+            <p>Cordialement,<br>L'équipe EDOTEAM</p>
+          </div>
+        `,
+      }).catch((error) => {
+        console.error("Erreur lors de l'envoi de l'e-mail de connexion:", error);
+      });
     }
 
     return result;
@@ -616,6 +617,11 @@ export class AuthService {
         verificationStatus: true,
         rejectionReason: true,
         emailVerified: true,
+        media: {
+          where: { type: 'DOCUMENT' },
+          select: { id: true, url: true, type: true, createdAt: true },
+          orderBy: { createdAt: 'desc' },
+        },
       }
     });
 
