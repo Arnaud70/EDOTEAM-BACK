@@ -1,13 +1,23 @@
-import { Injectable, Logger, UnauthorizedException, ConflictException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  UnauthorizedException,
+  ConflictException,
+  ForbiddenException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto, LoginDto } from './dto/auth.dto';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
-import { MailerService } from '@nestjs-modules/mailer';
+import { MailService } from '../../common/mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
-import { containsBannedWord, BANNED_WORD_MESSAGE } from '../../common/validation/patterns';
+import {
+  containsBannedWord,
+  BANNED_WORD_MESSAGE,
+} from '../../common/validation/patterns';
 import { AuthTokensService } from './auth-tokens.service';
 
 export const EMAIL_NOT_VERIFIED_MESSAGE =
@@ -15,7 +25,8 @@ export const EMAIL_NOT_VERIFIED_MESSAGE =
 
 // Hash bcrypt factice ("mot de passe" inconnu) utilisé pour égaliser le temps de réponse
 // du login quand l'email n'existe pas -> empêche l'énumération de comptes par timing.
-const DUMMY_PASSWORD_HASH = '$2b$10$abcdefghijklmnopqrstuv0123456789012345678901234567890123';
+const DUMMY_PASSWORD_HASH =
+  '$2b$10$abcdefghijklmnopqrstuv0123456789012345678901234567890123';
 
 export const buildWelcomeNotificationContent = (role: string) => {
   const isPrestataire = role === 'PRESTATAIRE';
@@ -41,8 +52,11 @@ export const isProfileComplete = (user: {
   }
 
   const hasPhone = !!user.telephone && user.telephone.trim().length > 0;
-  const hasLocation = !!user.localisation && user.localisation.trim().length > 0;
-  const hasProfessionalTitle = user.role !== 'PRESTATAIRE' || (!!user.titreProfessionnel && user.titreProfessionnel.trim().length > 0);
+  const hasLocation =
+    !!user.localisation && user.localisation.trim().length > 0;
+  const hasProfessionalTitle =
+    user.role !== 'PRESTATAIRE' ||
+    (!!user.titreProfessionnel && user.titreProfessionnel.trim().length > 0);
 
   return hasPhone && hasLocation && hasProfessionalTitle;
 };
@@ -53,15 +67,15 @@ export class AuthService {
     private prisma: PrismaService,
     private jwtService: JwtService,
     private activityLogs: ActivityLogsService,
-    private mailerService: MailerService,
+    private mailService: MailService,
     private notificationsService: NotificationsService,
     private authTokens: AuthTokensService,
   ) {}
 
   private readonly logger = new Logger(AuthService.name);
 
-  private isSmtpConfigured(): boolean {
-    return !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
+  private isEmailConfigured(): boolean {
+    return this.mailService.isConfigured();
   }
 
   private formatTtl(): string {
@@ -71,13 +85,19 @@ export class AuthService {
     return `${s} secondes`;
   }
 
-  private otpEmailHtml(prenom: string | null, code: string, purpose: 'verification' | 'reset'): string {
-    const title = purpose === 'verification'
-      ? 'Vérification de votre adresse email'
-      : 'Réinitialisation de votre mot de passe';
-    const intro = purpose === 'verification'
-      ? 'Utilisez le code ci-dessous pour confirmer votre adresse email et activer votre compte EDOTEAM.'
-      : 'Utilisez le code ci-dessous pour définir un nouveau mot de passe. Si vous n’êtes pas à l’origine de cette demande, ignorez cet email.';
+  private otpEmailHtml(
+    prenom: string | null,
+    code: string,
+    purpose: 'verification' | 'reset',
+  ): string {
+    const title =
+      purpose === 'verification'
+        ? 'Vérification de votre adresse email'
+        : 'Réinitialisation de votre mot de passe';
+    const intro =
+      purpose === 'verification'
+        ? 'Utilisez le code ci-dessous pour confirmer votre adresse email et activer votre compte EDOTEAM.'
+        : 'Utilisez le code ci-dessous pour définir un nouveau mot de passe. Si vous n’êtes pas à l’origine de cette demande, ignorez cet email.';
     return `
       <div style="font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b;">
         <div style="background-color: #0f172a; padding: 32px 20px; text-align: center;">
@@ -98,18 +118,26 @@ export class AuthService {
       </div>`;
   }
 
-  private async sendOtpEmail(email: string, prenom: string | null, code: string, purpose: 'verification' | 'reset') {
-    if (!this.isSmtpConfigured()) {
-      this.logger.warn(`SMTP non configuré : code ${purpose} non envoyé par email à ${email}.`);
+  private async sendOtpEmail(
+    email: string,
+    prenom: string | null,
+    code: string,
+    purpose: 'verification' | 'reset',
+  ) {
+    if (!this.isEmailConfigured()) {
+      this.logger.warn(
+        `Brevo non configuré : code ${purpose} non envoyé par email à ${email}.`,
+      );
       return;
     }
-    const subject = purpose === 'verification'
-      ? 'EDOTEAM - Votre code de vérification'
-      : 'EDOTEAM - Votre code de réinitialisation';
+    const subject =
+      purpose === 'verification'
+        ? 'EDOTEAM - Votre code de vérification'
+        : 'EDOTEAM - Votre code de réinitialisation';
     const text = `Votre code EDOTEAM est : ${code}\n\nCe code expire dans ${this.formatTtl()}.\nNe le partagez avec personne.`;
 
     try {
-      await this.mailerService.sendMail({
+      await this.mailService.sendMail({
         to: email,
         subject,
         text,
@@ -171,48 +199,73 @@ export class AuthService {
         service = await this.prisma.service.create({
           data: {
             nom: normalizedName,
-            description: `Service proposé par ${dto.nom} ${dto.prenom || ''}`.trim(),
+            description:
+              `Service proposé par ${dto.nom} ${dto.prenom || ''}`.trim(),
           },
         });
       }
 
-      await this.prisma.prestataireService.create({
-        data: {
-          prestataireId: user.id,
-          serviceId: service.id,
-          prixIndicatif: null,
-          experience: 0,
-        },
-      }).catch(() => undefined);
+      await this.prisma.prestataireService
+        .create({
+          data: {
+            prestataireId: user.id,
+            serviceId: service.id,
+            prixIndicatif: null,
+            experience: 0,
+          },
+        })
+        .catch(() => undefined);
     }
 
     // Journalisation en tâche de fond : ne doit jamais retarder la réponse HTTP.
-    this.activityLogs.log({
-      userId: user.id,
-      action: 'REGISTER',
-      entityType: 'USER',
-      entityId: user.id,
-      metadata: { role: user.role },
-    }).catch((logError) => {
-      console.error("Erreur lors de la journalisation de l'inscription:", logError);
-    });
+    this.activityLogs
+      .log({
+        userId: user.id,
+        action: 'REGISTER',
+        entityType: 'USER',
+        entityId: user.id,
+        metadata: { role: user.role },
+      })
+      .catch((logError) => {
+        console.error(
+          "Erreur lors de la journalisation de l'inscription:",
+          logError,
+        );
+      });
 
     // Sans SMTP configuré (dev local), on ne peut pas vérifier l'email : on active le compte directement.
-    if (!this.isSmtpConfigured()) {
-      await this.prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
+    if (!this.isEmailConfigured()) {
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { emailVerified: true },
+      });
       this.sendWelcomeNotification(user.id, user.role);
-      return { ...(await this.getTokens(user.id, user.email, user.role)), emailVerificationRequired: false };
+      return {
+        ...(await this.getTokens(user.id, user.email, user.role)),
+        emailVerificationRequired: false,
+      };
     }
 
     // Avec SMTP : on envoie un code OTP et on n'ouvre PAS de session tant que l'email n'est pas vérifié.
     // L'envoi de l'email (SMTP peut être lent) ne doit pas bloquer la réponse HTTP.
     try {
-      const { code } = await this.authTokens.issueCode(user.id, 'EMAIL_VERIFICATION');
-      this.sendOtpEmail(user.email, user.prenom, code, 'verification').catch((error) => {
-        console.error("Erreur lors de l'envoi du code de vérification:", error);
-      });
+      const { code } = await this.authTokens.issueCode(
+        user.id,
+        'EMAIL_VERIFICATION',
+      );
+      this.sendOtpEmail(user.email, user.prenom, code, 'verification').catch(
+        (error) => {
+          console.error(
+            "Erreur lors de l'envoi du code de vérification:",
+            error,
+          );
+        },
+      );
     } catch (error) {
-      console.error("Erreur lors de la génération du code de vérification:", error);
+      console.error(
+        'Erreur lors de la génération du code de vérification:',
+        error,
+      );
     }
 
     return {
@@ -233,22 +286,30 @@ export class AuthService {
         type: 'WELCOME',
       });
     } catch (notificationError) {
-      console.error('Erreur lors de la création de la notification de bienvenue:', notificationError);
+      console.error(
+        'Erreur lors de la création de la notification de bienvenue:',
+        notificationError,
+      );
     }
   }
 
-  private async sendWelcomeEmail(user: { email: string; prenom: string | null; role: string }) {
+  private async sendWelcomeEmail(user: {
+    email: string;
+    prenom: string | null;
+    role: string;
+  }) {
     try {
-      if (!this.isSmtpConfigured()) {
+      if (!this.isEmailConfigured()) {
         return;
       }
 
       const isPrestataire = user.role === 'PRESTATAIRE';
-      const subject = isPrestataire 
-        ? 'Bienvenue Expert EDOTEAM - Guide de démarrage' 
+      const subject = isPrestataire
+        ? 'Bienvenue Expert EDOTEAM - Guide de démarrage'
         : 'Bienvenue sur EDOTEAM !';
 
-      const emailHtml = isPrestataire ? `
+      const emailHtml = isPrestataire
+        ? `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b;">
           <div style="background-color: #064e3b; padding: 40px 20px; text-align: center;">
             <h1 style="color: #fbbf24; margin: 0; font-size: 24px; text-transform: uppercase; letter-spacing: 2px;">Bienvenue Expert EDOTEAM</h1>
@@ -277,7 +338,8 @@ export class AuthService {
             © ${new Date().getFullYear()} EDOTEAM - L'Excellence à votre service.
           </div>
         </div>
-      ` : `
+      `
+        : `
         <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b;">
           <div style="background-color: #0f172a; padding: 40px 20px; text-align: center;">
             <h1 style="color: #059669; margin: 0; font-size: 24px;">Bienvenue sur EDOTEAM</h1>
@@ -303,63 +365,94 @@ export class AuthService {
         </div>
       `;
 
-      await this.mailerService.sendMail({
+      await this.mailService.sendMail({
         to: user.email,
         subject: subject,
         html: emailHtml,
       });
     } catch (error) {
-      console.error("Erreur lors de l'envoi de l'e-mail de bienvenue personnalisé:", error);
+      console.error(
+        "Erreur lors de l'envoi de l'e-mail de bienvenue personnalisé:",
+        error,
+      );
     }
   }
 
   async verifyEmail(email: string, code: string) {
+    await this.prisma.ensureConnected();
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!user) {
       throw new BadRequestException('Compte introuvable.');
     }
     if (user.emailVerified) {
-      return { ...(await this.getTokens(user.id, user.email, user.role)), alreadyVerified: true };
+      return {
+        ...(await this.getTokens(user.id, user.email, user.role)),
+        alreadyVerified: true,
+      };
     }
 
     await this.authTokens.consumeCode(user.id, 'EMAIL_VERIFICATION', code);
 
-    await this.prisma.user.update({ where: { id: user.id }, data: { emailVerified: true } });
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true },
+    });
 
     // Notification, email de bienvenue et journalisation : en tâche de fond, ne bloquent pas la réponse.
     this.sendWelcomeNotification(user.id, user.role);
     this.sendWelcomeEmail(user);
-    this.activityLogs.log({
-      userId: user.id,
-      action: 'EMAIL_VERIFIED',
-      entityType: 'USER',
-      entityId: user.id,
-    }).catch((logError) => {
-      console.error('Erreur lors de la journalisation de la vérification email:', logError);
-    });
+    this.activityLogs
+      .log({
+        userId: user.id,
+        action: 'EMAIL_VERIFIED',
+        entityType: 'USER',
+        entityId: user.id,
+      })
+      .catch((logError) => {
+        console.error(
+          'Erreur lors de la journalisation de la vérification email:',
+          logError,
+        );
+      });
 
     return this.getTokens(user.id, user.email, user.role);
   }
 
   async resendVerification(email: string) {
     const genericResponse = {
-      message: "Si un compte non vérifié correspond à cet email, un nouveau code vient d'être envoyé.",
+      message:
+        "Si un compte non vérifié correspond à cet email, un nouveau code vient d'être envoyé.",
       otpExpiresIn: this.authTokens.ttlSeconds,
     };
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
 
     if (user && !user.emailVerified && !user.deletedAt) {
       // Si l'utilisateur est verrouillé (trop d'essais), on le lui dit clairement.
       await this.authTokens.assertNotLocked(user.id, 'EMAIL_VERIFICATION');
       try {
-        const { code } = await this.authTokens.issueCode(user.id, 'EMAIL_VERIFICATION');
-        this.sendOtpEmail(user.email, user.prenom, code, 'verification').catch((error) => {
-          console.error("Erreur lors du renvoi du code de vérification:", error);
-        });
+        const { code } = await this.authTokens.issueCode(
+          user.id,
+          'EMAIL_VERIFICATION',
+        );
+        this.sendOtpEmail(user.email, user.prenom, code, 'verification').catch(
+          (error) => {
+            console.error(
+              'Erreur lors du renvoi du code de vérification:',
+              error,
+            );
+          },
+        );
       } catch (error) {
-        console.error("Erreur lors de la génération du code de vérification:", error);
+        console.error(
+          'Erreur lors de la génération du code de vérification:',
+          error,
+        );
       }
     }
 
@@ -368,26 +461,42 @@ export class AuthService {
 
   async forgotPassword(email: string) {
     const genericResponse = {
-      message: 'Si un compte correspond à cet email, un code de réinitialisation vient d’être envoyé.',
+      message:
+        'Si un compte correspond à cet email, un code de réinitialisation vient d’être envoyé.',
       otpExpiresIn: this.authTokens.ttlSeconds,
     };
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
 
     if (user && !user.deletedAt) {
       try {
-        const { code } = await this.authTokens.issueCode(user.id, 'PASSWORD_RESET');
-        this.sendOtpEmail(user.email, user.prenom, code, 'reset').catch((error) => {
-          console.error("Erreur lors de l'envoi du code de réinitialisation:", error);
-        });
-        this.activityLogs.log({
-          userId: user.id,
-          action: 'PASSWORD_RESET_REQUESTED',
-          entityType: 'USER',
-          entityId: user.id,
-        }).catch(() => undefined);
+        const { code } = await this.authTokens.issueCode(
+          user.id,
+          'PASSWORD_RESET',
+        );
+        this.sendOtpEmail(user.email, user.prenom, code, 'reset').catch(
+          (error) => {
+            console.error(
+              "Erreur lors de l'envoi du code de réinitialisation:",
+              error,
+            );
+          },
+        );
+        this.activityLogs
+          .log({
+            userId: user.id,
+            action: 'PASSWORD_RESET_REQUESTED',
+            entityType: 'USER',
+            entityId: user.id,
+          })
+          .catch(() => undefined);
       } catch (error) {
-        console.error("Erreur lors de la génération du code de réinitialisation:", error);
+        console.error(
+          'Erreur lors de la génération du code de réinitialisation:',
+          error,
+        );
       }
     }
 
@@ -396,15 +505,21 @@ export class AuthService {
 
   async resetPassword(email: string, code: string, newPassword: string) {
     const normalizedEmail = email.trim().toLowerCase();
-    const user = await this.prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const user = await this.prisma.user.findUnique({
+      where: { email: normalizedEmail },
+    });
     if (!user || user.deletedAt) {
-      throw new BadRequestException('Impossible de réinitialiser le mot de passe.');
+      throw new BadRequestException(
+        'Impossible de réinitialiser le mot de passe.',
+      );
     }
 
     await this.authTokens.consumeCode(user.id, 'PASSWORD_RESET', code);
 
     if (await bcrypt.compare(newPassword, user.passwordHash)) {
-      throw new BadRequestException("Le nouveau mot de passe doit être différent de l'ancien.");
+      throw new BadRequestException(
+        "Le nouveau mot de passe doit être différent de l'ancien.",
+      );
     }
 
     const salt = await bcrypt.genSalt();
@@ -428,8 +543,8 @@ export class AuthService {
         entityType: 'USER',
         entityId: user.id,
       });
-      if (this.isSmtpConfigured()) {
-        await this.mailerService.sendMail({
+      if (this.isEmailConfigured()) {
+        await this.mailService.sendMail({
           to: user.email,
           subject: 'EDOTEAM • Votre mot de passe a été modifié',
           html: `<div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; padding: 20px;">
@@ -443,7 +558,10 @@ export class AuthService {
       console.error('Erreur post-réinitialisation:', error);
     }
 
-    return { success: true, message: 'Mot de passe réinitialisé. Vous pouvez vous connecter.' };
+    return {
+      success: true,
+      message: 'Mot de passe réinitialisé. Vous pouvez vous connecter.',
+    };
   }
 
   async login(dto: LoginDto) {
@@ -455,23 +573,33 @@ export class AuthService {
 
     // On effectue toujours une comparaison bcrypt (même si l'utilisateur n'existe pas)
     // pour ne pas révéler l'existence du compte via le temps de réponse.
-    const isMatch = await bcrypt.compare(password, user?.passwordHash || DUMMY_PASSWORD_HASH);
+    const isMatch = await bcrypt.compare(
+      password,
+      user?.passwordHash || DUMMY_PASSWORD_HASH,
+    );
 
     if (!user || !isMatch) {
       throw new UnauthorizedException('Identifiants invalides');
     }
 
     if (user.deletedAt) {
-      throw new UnauthorizedException('Ce compte a été suspendu. Contactez le support.');
+      throw new UnauthorizedException(
+        'Ce compte a été suspendu. Contactez le support.',
+      );
     }
 
     if (!user.emailVerified) {
       // Renvoi automatique d'un nouveau code pour faciliter la vérification (en tâche de fond).
       try {
-        const { code } = await this.authTokens.issueCode(user.id, 'EMAIL_VERIFICATION');
-        this.sendOtpEmail(user.email, user.prenom, code, 'verification').catch((error) => {
-          console.error('Erreur renvoi code à la connexion:', error);
-        });
+        const { code } = await this.authTokens.issueCode(
+          user.id,
+          'EMAIL_VERIFICATION',
+        );
+        this.sendOtpEmail(user.email, user.prenom, code, 'verification').catch(
+          (error) => {
+            console.error('Erreur renvoi code à la connexion:', error);
+          },
+        );
       } catch (error) {
         console.error('Erreur génération code à la connexion:', error);
       }
@@ -487,29 +615,41 @@ export class AuthService {
 
     // Journalisation, notification et email d'alerte : en tâche de fond, ne doivent jamais
     // retarder la réponse de connexion (l'envoi SMTP en particulier peut être lent).
-    this.activityLogs.log({
-      userId: user.id,
-      action: 'LOGIN',
-      entityType: 'USER',
-      entityId: user.id,
-    }).catch((logError) => {
-      console.error('Erreur lors de la journalisation de la connexion:', logError);
-    });
+    this.activityLogs
+      .log({
+        userId: user.id,
+        action: 'LOGIN',
+        entityType: 'USER',
+        entityId: user.id,
+      })
+      .catch((logError) => {
+        console.error(
+          'Erreur lors de la journalisation de la connexion:',
+          logError,
+        );
+      });
 
-    this.notificationsService.create({
-      userId: user.id,
-      title: 'Bienvenue sur EDOTEAM',
-      message: 'Vous êtes connecté avec succès. Consultez rapidement vos notifications pour découvrir les nouveautés et configurer votre profil selon votre rôle.',
-      type: 'LOGIN',
-    }).catch((notificationError) => {
-      console.error('Erreur lors de la création de la notification de connexion:', notificationError);
-    });
+    this.notificationsService
+      .create({
+        userId: user.id,
+        title: 'Bienvenue sur EDOTEAM',
+        message:
+          'Vous êtes connecté avec succès. Consultez rapidement vos notifications pour découvrir les nouveautés et configurer votre profil selon votre rôle.',
+        type: 'LOGIN',
+      })
+      .catch((notificationError) => {
+        console.error(
+          'Erreur lors de la création de la notification de connexion:',
+          notificationError,
+        );
+      });
 
-    if (this.isSmtpConfigured()) {
-      this.mailerService.sendMail({
-        to: user.email,
-        subject: 'Nouvelle connexion à votre compte EDOTEAM',
-        html: `
+    if (this.isEmailConfigured()) {
+      this.mailService
+        .sendMail({
+          to: user.email,
+          subject: 'Nouvelle connexion à votre compte EDOTEAM',
+          html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #ddd; padding: 20px;">
             <h2 style="color: #2196F3;">Alerte de connexion</h2>
             <p>Bonjour ${user.prenom},</p>
@@ -519,9 +659,13 @@ export class AuthService {
             <p>Cordialement,<br>L'équipe EDOTEAM</p>
           </div>
         `,
-      }).catch((error) => {
-        console.error("Erreur lors de l'envoi de l'e-mail de connexion:", error);
-      });
+        })
+        .catch((error) => {
+          console.error(
+            "Erreur lors de l'envoi de l'e-mail de connexion:",
+            error,
+          );
+        });
     }
 
     return result;
@@ -564,7 +708,7 @@ export class AuthService {
       where: { userId, revokedAt: null },
     });
 
-    const validToken = tokens.find(t => bcrypt.compareSync(rt, t.tokenHash));
+    const validToken = tokens.find((t) => bcrypt.compareSync(rt, t.tokenHash));
     if (!validToken) throw new ForbiddenException('Accès refusé');
 
     // Rotation: on révoque l'ancien
@@ -622,7 +766,7 @@ export class AuthService {
           select: { id: true, url: true, type: true, createdAt: true },
           orderBy: { createdAt: 'desc' },
         },
-      }
+      },
     });
 
     return {
@@ -678,16 +822,22 @@ export class AuthService {
           type: 'WELCOME',
         });
       } catch (notificationError) {
-        console.error('Erreur lors de la création de la notification de bienvenue Google:', notificationError);
+        console.error(
+          'Erreur lors de la création de la notification de bienvenue Google:',
+          notificationError,
+        );
       }
 
       // Envoyer l'e-mail de bienvenue uniquement si la configuration SMTP est réelle
       try {
-        if (!this.isSmtpConfigured()) {
-          return { ...(await this.getTokens(user.id, user.email, user.role)), isNewUser };
+        if (!this.isEmailConfigured()) {
+          return {
+            ...(await this.getTokens(user.id, user.email, user.role)),
+            isNewUser,
+          };
         }
 
-        await this.mailerService.sendMail({
+        await this.mailService.sendMail({
           to: user.email,
           subject: 'Bienvenue sur EDOTEAM (via Google) !',
           html: `
@@ -700,7 +850,10 @@ export class AuthService {
           `,
         });
       } catch (error) {
-        console.error("Erreur lors de l'envoi de l'e-mail de bienvenue Google:", error);
+        console.error(
+          "Erreur lors de l'envoi de l'e-mail de bienvenue Google:",
+          error,
+        );
       }
     }
 

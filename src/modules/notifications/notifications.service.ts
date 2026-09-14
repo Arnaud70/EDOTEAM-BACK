@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { MailerService } from '@nestjs-modules/mailer';
+import { MailService } from '../../common/mail/mail.service';
 
 @Injectable()
 export class NotificationsService {
@@ -8,18 +8,27 @@ export class NotificationsService {
 
   constructor(
     private prisma: PrismaService,
-    private mailerService: MailerService,
+    private mailService: MailService,
   ) {}
 
-  async create(data: { userId: string; title: string; message: string; type: string }) {
+  async create(data: {
+    userId: string;
+    title: string;
+    message: string;
+    type: string;
+  }) {
     if (!data?.userId || !data?.title || !data?.message || !data?.type) {
       this.logger.warn('Notification ignorée: données incomplètes.');
       return null;
     }
 
-    const user = await this.prisma.user.findUnique({ where: { id: data.userId } });
+    const user = await this.prisma.user.findUnique({
+      where: { id: data.userId },
+    });
     if (!user) {
-      this.logger.warn(`Notification ignorée pour userId inconnu: ${data.userId}`);
+      this.logger.warn(
+        `Notification ignorée pour userId inconnu: ${data.userId}`,
+      );
       return null;
     }
 
@@ -33,21 +42,21 @@ export class NotificationsService {
     });
 
     try {
-      const smtpHost = process.env.SMTP_HOST || process.env.MAIL_HOST;
-      const smtpUser = process.env.SMTP_USER || process.env.MAIL_USER;
-      const smtpPass = process.env.SMTP_PASS || process.env.MAIL_PASSWORD;
-
-      if (user.email && smtpHost && smtpUser && smtpPass) {
-        await this.mailerService.sendMail({
+      if (user.email && this.mailService.isConfigured()) {
+        await this.mailService.sendMail({
           to: user.email,
           subject: `[EDOTEAM] ${data.title}`,
           text: `${data.message}\n\nConnectez-vous sur EDOTEAM pour en savoir plus.`,
         });
-        this.logger.log(`Email envoyé à ${user.email} pour la notification: ${data.title}`);
+        this.logger.log(
+          `Email envoyé à ${user.email} pour la notification: ${data.title}`,
+        );
       }
     } catch (error) {
       const errMessage = error instanceof Error ? error.message : String(error);
-      this.logger.error(`Erreur lors de l'envoi de l'email de notification: ${errMessage}`);
+      this.logger.error(
+        `Erreur lors de l'envoi de l'email de notification: ${errMessage}`,
+      );
     }
 
     return notification;

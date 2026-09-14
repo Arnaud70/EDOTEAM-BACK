@@ -1,38 +1,40 @@
-const nodemailer = require('nodemailer');
+require('dotenv').config();
 
 (async () => {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || 587);
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderName = process.env.MAIL_FROM_NAME;
+  const senderEmail = process.env.MAIL_FROM_EMAIL;
+  const recipient = process.env.TEST_TO || senderEmail;
 
-  if (!host || !user || !pass) {
-    console.error('Please set SMTP_HOST, SMTP_USER and SMTP_PASS environment variables before running this script.');
+  if (!apiKey || !senderName || !senderEmail || !recipient) {
+    console.error('BREVO_API_KEY, MAIL_FROM_NAME, MAIL_FROM_EMAIL and TEST_TO are required.');
     process.exit(1);
   }
 
-  const transporter = nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465, // true for 465, false for other ports
-    auth: {
-      user,
-      pass,
-    },
-  });
-
   try {
-    const info = await transporter.sendMail({
-      from: `${process.env.MAIL_FROM_NAME || 'EDOTEAM'} <${process.env.MAIL_FROM_EMAIL || user}>`,
-      to: process.env.TEST_TO || user,
-      subject: 'EDOTEAM SMTP Test',
-      text: `Test message sent at ${new Date().toISOString()}`,
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        accept: 'application/json',
+        'content-type': 'application/json',
+        'api-key': apiKey,
+      },
+      body: JSON.stringify({
+        sender: { name: senderName, email: senderEmail },
+        to: [{ email: recipient }],
+        subject: 'EDOTEAM Brevo API Test',
+        htmlContent: `<p>Test envoyé via l'API HTTPS Brevo le ${new Date().toISOString()}.</p>`,
+      }),
     });
-    console.log('Message sent:', info.messageId);
-    console.log('Response:', info.response);
-  } catch (err) {
-    console.error('SMTP test failed:');
-    console.error(err);
+
+    if (!response.ok) {
+      console.error(`Brevo API test failed with HTTP ${response.status}.`);
+      process.exit(2);
+    }
+
+    console.log('Email envoyé via Brevo');
+  } catch (error) {
+    console.error(`Brevo API test failed: ${error instanceof Error ? error.message : String(error)}`);
     process.exit(2);
   }
 })();

@@ -11,11 +11,12 @@ describe('NotificationsService', () => {
       },
     } as any;
 
-    const mailerService = {
+    const mailService = {
+      isConfigured: jest.fn().mockReturnValue(false),
       sendMail: jest.fn(),
     } as any;
 
-    const service = new NotificationsService(prisma, mailerService);
+    const service = new NotificationsService(prisma, mailService);
 
     const result = await service.create({
       userId: 'missing-user',

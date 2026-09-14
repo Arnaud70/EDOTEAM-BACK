@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
+import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { APP_GUARD } from '@nestjs/core';
-import { MailerModule } from '@nestjs-modules/mailer';
 import { CacheModule } from '@nestjs/cache-manager';
 import { buildCacheOptions } from './common/cache/cache.config';
+import { MailModule } from './common/mail/mail.module';
 
 // Core
 import { PrismaModule } from './prisma/prisma.module';
@@ -30,31 +30,17 @@ import { PaymentsModule } from './modules/payments/payments.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
     CacheModule.registerAsync({
       isGlobal: true,
       useFactory: buildCacheOptions,
     }),
-    MailerModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => ({
-        transport: {
-          host: config.get('SMTP_HOST') || config.get('MAIL_HOST') || 'smtp.ethereal.email',
-          port: Number(config.get('SMTP_PORT') || config.get('MAIL_PORT') || 587),
-          auth: {
-            user: config.get('SMTP_USER') || config.get('MAIL_USER') || 'test@ethereal.email',
-            pass: config.get('SMTP_PASS') || config.get('MAIL_PASSWORD') || 'password',
-          },
-        },
-        defaults: {
-          from: `"${config.get('MAIL_FROM_NAME') || 'EDOTEAM'}" <${config.get('MAIL_FROM_EMAIL') || config.get('MAIL_USER') || 'noreply@edoteam.tg'}>`,
-        },
-      }),
-    }),
+    MailModule,
     PrismaModule,
     AuthModule,
     UsersModule,

@@ -1,5 +1,9 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import { MailerService } from '@nestjs-modules/mailer';
+import {
+  Injectable,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { MailService } from '../../common/mail/mail.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ReportsService } from '../reports/reports.service';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
@@ -11,12 +15,12 @@ export class AdminService {
     private prisma: PrismaService,
     private reportsService: ReportsService,
     private activityLogsService: ActivityLogsService,
-    private mailerService: MailerService,
+    private mailService: MailService,
     private notificationsService: NotificationsService,
   ) {}
 
-  private isSmtpConfigured(): boolean {
-    return !!process.env.SMTP_HOST && !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
+  private isEmailConfigured(): boolean {
+    return this.mailService.isConfigured();
   }
 
   private async sendVerificationStatusEmail(
@@ -24,12 +28,12 @@ export class AdminService {
     status: 'VERIFIED' | 'REJECTED',
     reason?: string | null,
   ) {
-    if (!this.isSmtpConfigured()) return;
+    if (!this.isEmailConfigured()) return;
 
     const isVerified = status === 'VERIFIED';
     const subject = isVerified
       ? 'EDOTEAM • Votre compte prestataire est validé !'
-      : 'EDOTEAM • Votre document justificatif n\'a pas été validé';
+      : "EDOTEAM • Votre document justificatif n'a pas été validé";
 
     const html = `
       <div style="font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 600px; margin: auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; color: #1e293b;">
@@ -39,15 +43,19 @@ export class AdminService {
         <div style="padding: 30px;">
           <h2 style="color: #0f172a; margin-top: 0;">${isVerified ? 'Compte validé ✅' : 'Document non validé'}</h2>
           <p style="line-height: 1.6;">Bonjour ${user.prenom || user.nom},</p>
-          ${isVerified ? `
+          ${
+            isVerified
+              ? `
             <p style="line-height: 1.6;">Bonne nouvelle : notre équipe a vérifié votre document justificatif et validé votre profil prestataire. Vos services sont désormais visibles publiquement sur EDOTEAM.</p>
-          ` : `
+          `
+              : `
             <p style="line-height: 1.6;">Notre équipe a examiné votre document justificatif et n'a pas pu valider votre profil prestataire pour le moment.</p>
             <div style="background-color: #fef2f2; border: 1px solid #fecaca; padding: 16px; border-radius: 8px; margin: 20px 0;">
               <strong style="color: #b91c1c;">Motif :</strong> <span style="color: #7f1d1d;">${reason || 'Non spécifié.'}</span>
             </div>
             <p style="line-height: 1.6;">Vous pouvez importer un nouveau document depuis vos Paramètres. Tant qu'il n'est pas validé, votre profil n'apparaît pas dans les recherches publiques.</p>
-          `}
+          `
+          }
           <div style="text-align: center; margin-top: 30px;">
             <a href="${process.env.FRONTEND_URL}/${isVerified ? 'dashboard' : 'settings'}" style="background-color: #059669; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">${isVerified ? 'Accéder à mon Tableau de Bord' : 'Importer un nouveau document'}</a>
           </div>
@@ -58,9 +66,12 @@ export class AdminService {
       </div>`;
 
     try {
-      await this.mailerService.sendMail({ to: user.email, subject, html });
+      await this.mailService.sendMail({ to: user.email, subject, html });
     } catch (error) {
-      console.error('Erreur lors de l\'envoi de l\'email de vérification:', error);
+      console.error(
+        "Erreur lors de l'envoi de l'email de vérification:",
+        error,
+      );
     }
   }
 
@@ -76,28 +87,33 @@ export class AdminService {
     ] = await Promise.all([
       this.prisma.user.count({ where: { deletedAt: null } }),
       this.prisma.user.count({ where: { role: 'CLIENT', deletedAt: null } }),
-      this.prisma.user.count({ where: { role: 'PRESTATAIRE', deletedAt: null } }),
+      this.prisma.user.count({
+        where: { role: 'PRESTATAIRE', deletedAt: null },
+      }),
       this.prisma.service.count(),
       this.prisma.message.count(),
       this.prisma.avis.count(),
       this.prisma.report.count({ where: { status: 'PENDING' } }),
     ]);
 
-    const [totalRevenueResult, missionsRealisees, serviceDistributionGroups] = await Promise.all([
-      this.prisma.booking.aggregate({
-        _sum: { totalAmount: true },
-        where: { status: 'CONFIRMED' },
-      }),
-      this.prisma.booking.count({ where: { status: 'COMPLETED' } }),
-      this.prisma.prestataireService.groupBy({
-        by: ['serviceId'],
-        _count: { id: true },
-        orderBy: { _count: { id: 'desc' } },
-        take: 10,
-      }),
-    ]);
+    const [totalRevenueResult, missionsRealisees, serviceDistributionGroups] =
+      await Promise.all([
+        this.prisma.booking.aggregate({
+          _sum: { totalAmount: true },
+          where: { status: 'CONFIRMED' },
+        }),
+        this.prisma.booking.count({ where: { status: 'COMPLETED' } }),
+        this.prisma.prestataireService.groupBy({
+          by: ['serviceId'],
+          _count: { id: true },
+          orderBy: { _count: { id: 'desc' } },
+          take: 10,
+        }),
+      ]);
 
-    const serviceIds = serviceDistributionGroups.map((group) => group.serviceId);
+    const serviceIds = serviceDistributionGroups.map(
+      (group) => group.serviceId,
+    );
     const services = serviceIds.length
       ? await this.prisma.service.findMany({
           where: { id: { in: serviceIds } },
@@ -106,11 +122,15 @@ export class AdminService {
       : [];
 
     const serviceDistribution = serviceDistributionGroups.map((group) => ({
-      name: services.find((service) => service.id === group.serviceId)?.nom ?? 'Autre',
+      name:
+        services.find((service) => service.id === group.serviceId)?.nom ??
+        'Autre',
       value: group._count.id,
     }));
 
-    const monthlyRevenue = await this.prisma.$queryRaw<Array<{ month: string; revenue: number }>>`
+    const monthlyRevenue = await this.prisma.$queryRaw<
+      Array<{ month: string; revenue: number }>
+    >`
       SELECT to_char(date_trunc('month', "date"), 'Mon') AS month,
              sum(total_amount)::float AS revenue
       FROM bookings
@@ -120,7 +140,11 @@ export class AdminService {
     `;
 
     return {
-      utilisateurs: { total: totalUsers, clients: totalClients, prestataires: totalPrestataires },
+      utilisateurs: {
+        total: totalUsers,
+        clients: totalClients,
+        prestataires: totalPrestataires,
+      },
       services: totalServices,
       messages: totalMessages,
       avis: totalAvis,
@@ -136,7 +160,7 @@ export class AdminService {
   async getAllUsers(role?: string, status?: 'ACTIVE' | 'SUSPENDED') {
     const where: any = {};
     if (role) where.role = role as any;
-    
+
     if (status === 'ACTIVE') where.deletedAt = null;
     else if (status === 'SUSPENDED') where.deletedAt = { not: null };
 
@@ -171,7 +195,11 @@ export class AdminService {
     return this.reportsService.getAll(status);
   }
 
-  async resolveReport(reportId: string, adminId: string, status: 'RESOLVED' | 'REJECTED') {
+  async resolveReport(
+    reportId: string,
+    adminId: string,
+    status: 'RESOLVED' | 'REJECTED',
+  ) {
     return this.reportsService.resolve(reportId, adminId, status);
   }
 
@@ -180,7 +208,9 @@ export class AdminService {
     if (!user) throw new NotFoundException('Utilisateur non trouvé');
 
     if (user.role === 'PRESTATAIRE') {
-      const documentCount = await this.prisma.media.count({ where: { userId, type: 'DOCUMENT' } });
+      const documentCount = await this.prisma.media.count({
+        where: { userId, type: 'DOCUMENT' },
+      });
       if (documentCount === 0) {
         throw new BadRequestException(
           "Impossible de valider ce prestataire : aucun document justificatif n'a été fourni.",
@@ -198,12 +228,15 @@ export class AdminService {
     });
 
     await this.sendVerificationStatusEmail(updated, 'VERIFIED');
-    await this.notificationsService.create({
-      userId,
-      title: 'Compte validé ✅',
-      message: 'Votre document justificatif a été vérifié. Votre profil prestataire est maintenant visible publiquement.',
-      type: 'VERIFICATION_APPROVED',
-    }).catch(() => undefined);
+    await this.notificationsService
+      .create({
+        userId,
+        title: 'Compte validé ✅',
+        message:
+          'Votre document justificatif a été vérifié. Votre profil prestataire est maintenant visible publiquement.',
+        type: 'VERIFICATION_APPROVED',
+      })
+      .catch(() => undefined);
 
     return updated;
   }
@@ -218,12 +251,14 @@ export class AdminService {
     });
 
     await this.sendVerificationStatusEmail(updated, 'REJECTED', reason);
-    await this.notificationsService.create({
-      userId,
-      title: 'Document non validé',
-      message: `Votre document justificatif n'a pas été validé : ${reason}`,
-      type: 'VERIFICATION_REJECTED',
-    }).catch(() => undefined);
+    await this.notificationsService
+      .create({
+        userId,
+        title: 'Document non validé',
+        message: `Votre document justificatif n'a pas été validé : ${reason}`,
+        type: 'VERIFICATION_REJECTED',
+      })
+      .catch(() => undefined);
 
     return updated;
   }
@@ -246,26 +281,43 @@ export class AdminService {
     return this.prisma.$transaction([
       this.prisma.notification.deleteMany({ where: { userId } }),
       this.prisma.activityLog.deleteMany({ where: { userId } }),
-      this.prisma.booking.deleteMany({ where: { OR: [{ clientId: userId }, { prestataireId: userId }] } }),
+      this.prisma.booking.deleteMany({
+        where: { OR: [{ clientId: userId }, { prestataireId: userId }] },
+      }),
       this.prisma.transaction.deleteMany({ where: { wallet: { userId } } }),
       this.prisma.wallet.deleteMany({ where: { userId } }),
-      this.prisma.report.deleteMany({ where: { OR: [{ reporterId: userId }, { resolvedById: userId }] } }),
-      this.prisma.message.deleteMany({ where: { OR: [{ senderId: userId }, { receiverId: userId }] } }),
-      this.prisma.avis.deleteMany({ where: { OR: [{ clientId: userId }, { prestataireId: userId }] } }),
-      this.prisma.prestataireService.deleteMany({ where: { prestataireId: userId } }),
+      this.prisma.report.deleteMany({
+        where: { OR: [{ reporterId: userId }, { resolvedById: userId }] },
+      }),
+      this.prisma.message.deleteMany({
+        where: { OR: [{ senderId: userId }, { receiverId: userId }] },
+      }),
+      this.prisma.avis.deleteMany({
+        where: { OR: [{ clientId: userId }, { prestataireId: userId }] },
+      }),
+      this.prisma.prestataireService.deleteMany({
+        where: { prestataireId: userId },
+      }),
       this.prisma.availability.deleteMany({ where: { prestataireId: userId } }),
       this.prisma.media.deleteMany({ where: { userId } }),
       this.prisma.refreshToken.deleteMany({ where: { userId } }),
-      this.prisma.user.delete({ where: { id: userId } })
+      this.prisma.user.delete({ where: { id: userId } }),
     ]);
   }
 
   // Service Category Management
-  async createService(data: { nom: string; description?: string; icon?: string }) {
+  async createService(data: {
+    nom: string;
+    description?: string;
+    icon?: string;
+  }) {
     return this.prisma.service.create({ data });
   }
 
-  async updateService(id: string, data: { nom?: string; description?: string; icon?: string }) {
+  async updateService(
+    id: string,
+    data: { nom?: string; description?: string; icon?: string },
+  ) {
     return this.prisma.service.update({ where: { id }, data });
   }
 
@@ -281,7 +333,9 @@ export class AdminService {
       totalBookings,
       totalRevenueResult,
     ] = await Promise.all([
-      this.prisma.prestataireService.count({ where: { prestataireId: userId } }),
+      this.prisma.prestataireService.count({
+        where: { prestataireId: userId },
+      }),
       this.prisma.availability.count({ where: { prestataireId: userId } }),
       this.prisma.avis.count({ where: { prestataireId: userId } }),
       this.prisma.booking.count({ where: { prestataireId: userId } }),
@@ -291,7 +345,9 @@ export class AdminService {
       }),
     ]);
 
-    const monthlyRevenue = await this.prisma.$queryRaw<Array<{ month: string; revenue: number }>>`
+    const monthlyRevenue = await this.prisma.$queryRaw<
+      Array<{ month: string; revenue: number }>
+    >`
       SELECT to_char(date_trunc('month', "date"), 'Mon') AS month,
              sum(total_amount)::float AS revenue
       FROM bookings
