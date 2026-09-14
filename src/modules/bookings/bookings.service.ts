@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { BookingStatus } from '@prisma/client';
+import { BookingStatus, DayOfWeek } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 
@@ -32,6 +32,24 @@ export class BookingsService {
 
     if (data.startTime >= data.endTime) {
       throw new Error('La date de fin doit être après la date de début.');
+    }
+
+    const availability = await this.getAvailabilityForDate(
+      data.prestataireId,
+      data.date,
+    );
+    const requestedStart = this.minutesFromDate(data.startTime);
+    const requestedEnd = this.minutesFromDate(data.endTime);
+    const isWithinAvailability = availability.some((slot) => {
+      const slotStart = this.minutesFromDate(slot.startTime);
+      const slotEnd = this.minutesFromDate(slot.endTime);
+      return requestedStart >= slotStart && requestedEnd <= slotEnd;
+    });
+
+    if (!isWithinAvailability) {
+      throw new Error(
+        'Ce créneau est en dehors des disponibilités du prestataire.',
+      );
     }
 
     const overlappingBooking = await this.prisma.booking.findFirst({
@@ -99,20 +117,47 @@ export class BookingsService {
     const dayEnd = new Date(targetDate);
     dayEnd.setHours(23, 59, 59, 999);
 
-    return this.prisma.booking.findMany({
-      where: {
-        prestataireId,
-        status: { in: ['PENDING', 'CONFIRMED'] },
-        startTime: { lt: dayEnd },
-        endTime: { gt: dayStart },
-      },
-      select: {
-        startTime: true,
-        endTime: true,
-        status: true,
-      },
+    const [busySlots, availability] = await Promise.all([
+      this.prisma.booking.findMany({
+        where: {
+          prestataireId,
+          status: { in: ['PENDING', 'CONFIRMED'] },
+          startTime: { lt: dayEnd },
+          endTime: { gt: dayStart },
+        },
+        select: {
+          startTime: true,
+          endTime: true,
+          status: true,
+        },
+        orderBy: { startTime: 'asc' },
+      }),
+      this.getAvailabilityForDate(prestataireId, targetDate),
+    ]);
+
+    return { busySlots, availability };
+  }
+
+  private async getAvailabilityForDate(prestataireId: string, date: Date) {
+    const dayOfWeek = [
+      'SUNDAY',
+      'MONDAY',
+      'TUESDAY',
+      'WEDNESDAY',
+      'THURSDAY',
+      'FRIDAY',
+      'SATURDAY',
+    ][date.getUTCDay()] as DayOfWeek;
+
+    return this.prisma.availability.findMany({
+      where: { prestataireId, dayOfWeek },
+      select: { startTime: true, endTime: true },
       orderBy: { startTime: 'asc' },
     });
+  }
+
+  private minutesFromDate(value: Date): number {
+    return value.getUTCHours() * 60 + value.getUTCMinutes();
   }
 
   async findAll(userId: string, role: string) {

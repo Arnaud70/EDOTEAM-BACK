@@ -14,6 +14,14 @@ describe('BookingsService', () => {
         findUnique: jest.fn(),
         update: jest.fn(),
       },
+      availability: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            startTime: new Date('2026-08-13T08:00:00.000Z'),
+            endTime: new Date('2026-08-13T20:00:00.000Z'),
+          },
+        ]),
+      },
     };
 
     notifications = {
