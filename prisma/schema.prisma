@@ -209,6 +209,7 @@ model Booking {
   address       String
   interventionLatitude  Float? @map("intervention_latitude")
   interventionLongitude Float? @map("intervention_longitude")
+  clientNote    String? @map("client_note")
   createdAt     DateTime      @default(now()) @map("created_at")
   updatedAt     DateTime      @updatedAt @map("updated_at")
   client        User          @relation("ClientBookings", fields: [clientId], references: [id])

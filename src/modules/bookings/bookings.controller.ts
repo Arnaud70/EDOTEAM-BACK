@@ -12,6 +12,7 @@ import {
 import { BookingsService } from './bookings.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { BookingStatus } from '@prisma/client';
+import { CreateBookingDto } from './dto/create-booking.dto';
 
 @UseGuards(JwtAuthGuard)
 @Controller('bookings')
@@ -19,7 +20,7 @@ export class BookingsController {
   constructor(private bookingsService: BookingsService) {}
 
   @Post()
-  create(@Request() req, @Body() dto: any) {
+  create(@Request() req, @Body() dto: CreateBookingDto) {
     return this.bookingsService.create({
       ...dto,
       clientId: req.user.id,
