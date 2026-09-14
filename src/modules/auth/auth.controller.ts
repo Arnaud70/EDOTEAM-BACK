@@ -1,7 +1,23 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Res, UseGuards, Req, Get, UnauthorizedException } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Body,
+  HttpCode,
+  HttpStatus,
+  Res,
+  UseGuards,
+  Req,
+  Get,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Throttle } from '@nestjs/throttler';
-import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiResponse,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import {
   RegisterDto,
@@ -24,7 +40,7 @@ export class AuthController {
   @HttpCode(HttpStatus.CREATED)
   async register(
     @Body() dto: RegisterDto,
-    @Res({ passthrough: true }) res: any
+    @Res({ passthrough: true }) res: any,
   ) {
     const result: any = await this.authService.register(dto);
     if (result.refresh_token) {
@@ -60,7 +76,9 @@ export class AuthController {
     return this.authService.resendVerification(dto.email);
   }
 
-  @ApiOperation({ summary: 'Demander un code de réinitialisation de mot de passe' })
+  @ApiOperation({
+    summary: 'Demander un code de réinitialisation de mot de passe',
+  })
   @Throttle({ default: { limit: 3, ttl: 60_000 } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
@@ -68,7 +86,9 @@ export class AuthController {
     return this.authService.forgotPassword(dto.email);
   }
 
-  @ApiOperation({ summary: 'Réinitialiser son mot de passe avec le code OTP reçu' })
+  @ApiOperation({
+    summary: 'Réinitialiser son mot de passe avec le code OTP reçu',
+  })
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
@@ -80,10 +100,7 @@ export class AuthController {
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  async login(
-    @Body() dto: LoginDto,
-    @Res({ passthrough: true }) res: any
-  ) {
+  async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: any) {
     const result = await this.authService.login(dto);
     this.setRefreshToken(res, result.refresh_token);
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -94,10 +111,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Rafraîchir les tokens' })
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(
-    @Req() req: any,
-    @Res({ passthrough: true }) res: any
-  ) {
+  async refresh(@Req() req: any, @Res({ passthrough: true }) res: any) {
     const rt = req.cookies?.['refresh_token'];
     if (!rt) throw new UnauthorizedException('Refresh token manquant');
 
@@ -123,10 +137,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Se déconnecter' })
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  async logout(
-    @Req() req: any,
-    @Res({ passthrough: true }) res: any
-  ) {
+  async logout(@Req() req: any, @Res({ passthrough: true }) res: any) {
     await this.authService.logout(req.user.id);
     res.clearCookie('refresh_token');
     return { success: true };
@@ -149,7 +160,9 @@ export class AuthController {
 
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
     const onboardingParam = result.isNewUser ? '&onboarding=1' : '';
-    res.redirect(`${frontendUrl}/?token=${result.access_token}${onboardingParam}`);
+    res.redirect(
+      `${frontendUrl}/?token=${result.access_token}${onboardingParam}`,
+    );
   }
 
   @ApiBearerAuth('JWT')
@@ -169,4 +182,3 @@ export class AuthController {
     });
   }
 }
-

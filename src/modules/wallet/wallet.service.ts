@@ -22,17 +22,22 @@ export class WalletService {
     return wallet;
   }
 
-  async addTransaction(userId: string, data: {
-    type: TransactionType;
-    amount: number;
-    description?: string;
-  }) {
+  async addTransaction(
+    userId: string,
+    data: {
+      type: TransactionType;
+      amount: number;
+      description?: string;
+    },
+  ) {
     const wallet = await this.getOrCreateWallet(userId);
-    
+
     // Update balance
-    const newBalance = data.type === TransactionType.DEPOSIT || data.type === TransactionType.REFUND
-      ? Number(wallet.balance) + data.amount
-      : Number(wallet.balance) - data.amount;
+    const newBalance =
+      data.type === TransactionType.DEPOSIT ||
+      data.type === TransactionType.REFUND
+        ? Number(wallet.balance) + data.amount
+        : Number(wallet.balance) - data.amount;
 
     return this.prisma.$transaction([
       this.prisma.wallet.update({

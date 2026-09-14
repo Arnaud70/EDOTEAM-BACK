@@ -1,4 +1,12 @@
-import { Controller, Post, Get, Body, Param, Request, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AvailabilityService } from './availability.service';
@@ -22,7 +30,7 @@ export class AvailabilityController {
     return this.availabilityService.getAvailability(req.user.id);
   }
 
-  @ApiOperation({ summary: 'Voir les disponibilités d\'un prestataire' })
+  @ApiOperation({ summary: "Voir les disponibilités d'un prestataire" })
   @Get(':prestataireId')
   get(@Param('prestataireId') prestataireId: string) {
     return this.availabilityService.getAvailability(prestataireId);

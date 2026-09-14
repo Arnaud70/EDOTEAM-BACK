@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Request, Delete, UseInterceptors } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Request,
+  Delete,
+  UseInterceptors,
+} from '@nestjs/common';
 import { CacheInterceptor } from '@nestjs/cache-manager';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ServicesService } from './services.service';
@@ -19,7 +29,9 @@ export class ServicesController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @Get('me')
-  @ApiOperation({ summary: 'Get services offered by the authenticated provider' })
+  @ApiOperation({
+    summary: 'Get services offered by the authenticated provider',
+  })
   getMyServices(@Request() req: any) {
     return this.servicesService.getProviderServices(req.user.id);
   }
@@ -31,7 +43,10 @@ export class ServicesController {
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new service category (Admin only usually, but open for now)' })
+  @ApiOperation({
+    summary:
+      'Create a new service category (Admin only usually, but open for now)',
+  })
   create(@Body() data: any) {
     return this.servicesService.create(data);
   }
@@ -40,8 +55,17 @@ export class ServicesController {
   @ApiBearerAuth()
   @Post('me')
   @ApiOperation({ summary: 'Add a service to the provider profile' })
-  addMyService(@Request() req: any, @Body() data: { serviceId: string; prixIndicatif?: number; experience?: number }) {
-    return this.servicesService.addServiceToProvider(req.user.id, data.serviceId, data.prixIndicatif, data.experience);
+  addMyService(
+    @Request() req: any,
+    @Body()
+    data: { serviceId: string; prixIndicatif?: number; experience?: number },
+  ) {
+    return this.servicesService.addServiceToProvider(
+      req.user.id,
+      data.serviceId,
+      data.prixIndicatif,
+      data.experience,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -49,6 +73,9 @@ export class ServicesController {
   @Delete('me/:serviceId')
   @ApiOperation({ summary: 'Remove a service from the provider profile' })
   removeMyService(@Request() req: any, @Param('serviceId') serviceId: string) {
-    return this.servicesService.removeServiceFromProvider(req.user.id, serviceId);
+    return this.servicesService.removeServiceFromProvider(
+      req.user.id,
+      serviceId,
+    );
   }
 }

@@ -1,14 +1,25 @@
-import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { promises as fs } from 'fs';
 import { join } from 'path';
-import { containsBannedWord, BANNED_WORD_MESSAGE } from '../../common/validation/patterns';
+import {
+  containsBannedWord,
+  BANNED_WORD_MESSAGE,
+} from '../../common/validation/patterns';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService, private notificationsService: NotificationsService) {}
+  constructor(
+    private prisma: PrismaService,
+    private notificationsService: NotificationsService,
+  ) {}
 
   private normalizeMediaUrl(url: string) {
     if (!url || typeof url !== 'string') {
@@ -34,10 +45,10 @@ export class UsersService {
       where: { id: userId },
       include: {
         services: {
-          include: { service: true }
+          include: { service: true },
         },
         media: true,
-      }
+      },
     });
 
     if (!user) {
@@ -50,7 +61,9 @@ export class UsersService {
   }
 
   async updateProfile(userId: string, data: any) {
-    const currentUser = await this.prisma.user.findUnique({ where: { id: userId } });
+    const currentUser = await this.prisma.user.findUnique({
+      where: { id: userId },
+    });
     if (!currentUser) {
       throw new NotFoundException('Utilisateur non trouvé');
     }
@@ -58,23 +71,40 @@ export class UsersService {
     // Liste blanche stricte : aucun autre champ (role=ADMIN, verificationStatus,
     // emailVerified, passwordHash, id, email...) ne peut être modifié via cet endpoint.
     const ALLOWED_FIELDS = [
-      'prenom', 'nom', 'telephone', 'localisation',
-      'latitude', 'longitude', 'titreProfessionnel', 'bio', 'photoUrl', 'genre',
+      'prenom',
+      'nom',
+      'telephone',
+      'localisation',
+      'latitude',
+      'longitude',
+      'titreProfessionnel',
+      'bio',
+      'photoUrl',
+      'genre',
     ] as const;
 
     const updateData: any = {};
     for (const field of ALLOWED_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(data, field) && data[field] !== undefined) {
+      if (
+        Object.prototype.hasOwnProperty.call(data, field) &&
+        data[field] !== undefined
+      ) {
         updateData[field] = data[field];
       }
     }
 
     if (Object.prototype.hasOwnProperty.call(updateData, 'photoUrl')) {
-      updateData.photoUrl = updateData.photoUrl === '' ? null : this.normalizeMediaUrl(updateData.photoUrl);
+      updateData.photoUrl =
+        updateData.photoUrl === ''
+          ? null
+          : this.normalizeMediaUrl(updateData.photoUrl);
     }
 
     // Filtre de contenu inapproprié sur les champs libres visibles publiquement.
-    if (containsBannedWord(updateData.titreProfessionnel) || containsBannedWord(updateData.bio)) {
+    if (
+      containsBannedWord(updateData.titreProfessionnel) ||
+      containsBannedWord(updateData.bio)
+    ) {
       throw new BadRequestException(BANNED_WORD_MESSAGE);
     }
 
@@ -86,7 +116,8 @@ export class UsersService {
     ) {
       updateData.role = data.role;
       // Un nouveau prestataire doit repasser par la validation admin.
-      updateData.verificationStatus = data.role === 'PRESTATAIRE' ? 'PENDING' : 'VERIFIED';
+      updateData.verificationStatus =
+        data.role === 'PRESTATAIRE' ? 'PENDING' : 'VERIFIED';
     }
 
     const updated = await this.prisma.user.update({
@@ -106,7 +137,11 @@ export class UsersService {
     return result;
   }
 
-  async changePassword(userId: string, oldPassword: string, newPassword: string) {
+  async changePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) {
       throw new NotFoundException('Utilisateur non trouvé');
@@ -118,7 +153,9 @@ export class UsersService {
     }
 
     if (await bcrypt.compare(newPassword, user.passwordHash)) {
-      throw new BadRequestException("Le nouveau mot de passe doit être différent de l'ancien");
+      throw new BadRequestException(
+        "Le nouveau mot de passe doit être différent de l'ancien",
+      );
     }
 
     const salt = await bcrypt.genSalt();
@@ -140,7 +177,11 @@ export class UsersService {
 
   async getAllPrestataires() {
     return this.prisma.user.findMany({
-      where: { role: 'PRESTATAIRE', deletedAt: null, verificationStatus: 'VERIFIED' },
+      where: {
+        role: 'PRESTATAIRE',
+        deletedAt: null,
+        verificationStatus: 'VERIFIED',
+      },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -169,7 +210,11 @@ export class UsersService {
 
   async getProviderById(providerId: string) {
     const provider = await this.prisma.user.findUnique({
-      where: { id: providerId, role: 'PRESTATAIRE', verificationStatus: 'VERIFIED' },
+      where: {
+        id: providerId,
+        role: 'PRESTATAIRE',
+        verificationStatus: 'VERIFIED',
+      },
       select: {
         id: true,
         nom: true,
@@ -187,7 +232,7 @@ export class UsersService {
         rejectionReason: true,
         createdAt: true,
         services: {
-          include: { service: true }
+          include: { service: true },
         },
         receivedReviews: {
           select: {
@@ -211,7 +256,10 @@ export class UsersService {
     return provider;
   }
 
-  async addMedia(userId: string, data: { url: string; type: 'PROFILE' | 'WORK' | 'DOCUMENT' }) {
+  async addMedia(
+    userId: string,
+    data: { url: string; type: 'PROFILE' | 'WORK' | 'DOCUMENT' },
+  ) {
     const normalizedUrl = this.normalizeMediaUrl(data.url);
 
     if (!normalizedUrl) {
@@ -228,17 +276,22 @@ export class UsersService {
 
     if (data.type === 'DOCUMENT') {
       // Un nouveau document remet le compte en attente de vérification par un admin.
-      await this.prisma.user.update({
-        where: { id: userId },
-        data: { verificationStatus: 'PENDING', rejectionReason: null },
-      }).catch(() => undefined);
+      await this.prisma.user
+        .update({
+          where: { id: userId },
+          data: { verificationStatus: 'PENDING', rejectionReason: null },
+        })
+        .catch(() => undefined);
 
-      await this.notificationsService.create({
-        userId,
-        title: 'Document reçu',
-        message: 'Votre document justificatif a bien été reçu. Notre équipe va le vérifier avant de valider votre profil prestataire.',
-        type: 'DOCUMENT_RECEIVED',
-      }).catch(() => undefined);
+      await this.notificationsService
+        .create({
+          userId,
+          title: 'Document reçu',
+          message:
+            'Votre document justificatif a bien été reçu. Notre équipe va le vérifier avant de valider votre profil prestataire.',
+          type: 'DOCUMENT_RECEIVED',
+        })
+        .catch(() => undefined);
     }
 
     return media;
@@ -247,13 +300,23 @@ export class UsersService {
   async getFavorites(userId: string) {
     return this.prisma.favorite.findMany({
       where: { userId },
-      include: { provider: { include: { services: { include: { service: true } }, receivedReviews: { select: { note: true } } } } },
+      include: {
+        provider: {
+          include: {
+            services: { include: { service: true } },
+            receivedReviews: { select: { note: true } },
+          },
+        },
+      },
       orderBy: { createdAt: 'desc' },
     });
   }
 
   async addFavorite(userId: string, providerId: string) {
-    if (userId === providerId) throw new Error('Vous ne pouvez pas ajouter votre propre profil aux favoris.');
+    if (userId === providerId)
+      throw new Error(
+        'Vous ne pouvez pas ajouter votre propre profil aux favoris.',
+      );
     return this.prisma.favorite.upsert({
       where: { userId_providerId: { userId, providerId } },
       create: { userId, providerId },
@@ -271,13 +334,22 @@ export class UsersService {
     });
 
     if (!media || media.userId !== userId) {
-      throw new NotFoundException('Média introuvable ou non autorisé à supprimer.');
+      throw new NotFoundException(
+        'Média introuvable ou non autorisé à supprimer.',
+      );
     }
 
     if (media.url.includes('/uploads/')) {
       try {
-        const localPath = media.url.replace(`${process.env.BACKEND_URL || 'http://localhost:3000'}`, '');
-        const filePath = join(process.cwd(), 'uploads', localPath.split('/uploads/')[1]);
+        const localPath = media.url.replace(
+          `${process.env.BACKEND_URL || 'http://localhost:3000'}`,
+          '',
+        );
+        const filePath = join(
+          process.cwd(),
+          'uploads',
+          localPath.split('/uploads/')[1],
+        );
         await fs.unlink(filePath);
       } catch (error) {
         // Fichier déjà absent: ne pas bloquer la suppression de l'enregistrement
@@ -291,24 +363,34 @@ export class UsersService {
       },
     });
   }
-  async searchProviders(query: string, offset: number = 0, latitude?: number, longitude?: number) {
+  async searchProviders(
+    query: string,
+    offset: number = 0,
+    latitude?: number,
+    longitude?: number,
+  ) {
     const limit = 20;
     const searchTerm = query ? query.trim() : '';
 
     let ids: string[] = [];
 
-    const hasCoordinates = Number.isFinite(latitude) && Number.isFinite(longitude);
+    const hasCoordinates =
+      Number.isFinite(latitude) && Number.isFinite(longitude);
 
     if (searchTerm === '') {
       // Si pas de recherche, on prend juste les derniers prestataires inscrits
       const providers = await this.prisma.user.findMany({
-        where: { role: 'PRESTATAIRE', deletedAt: null, verificationStatus: 'VERIFIED' },
+        where: {
+          role: 'PRESTATAIRE',
+          deletedAt: null,
+          verificationStatus: 'VERIFIED',
+        },
         take: hasCoordinates ? 100 : limit,
         skip: offset,
         select: { id: true },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
       });
-      ids = providers.map(p => p.id);
+      ids = providers.map((p) => p.id);
     } else {
       // Sinon on utilise le Full-Text Search (SQL Raw)
       const rawResults: any[] = await this.prisma.$queryRaw`
@@ -328,7 +410,7 @@ export class UsersService {
           )
         LIMIT ${hasCoordinates ? 100 : limit} OFFSET ${offset}
       `;
-      ids = rawResults.map(r => r.id);
+      ids = rawResults.map((r) => r.id);
     }
 
     if (ids.length === 0) return [];
@@ -337,7 +419,7 @@ export class UsersService {
     // et éviter les problèmes de sérialisation BigInt
     const providers = await this.prisma.user.findMany({
       where: {
-        id: { in: ids }
+        id: { in: ids },
       },
       select: {
         id: true,
@@ -354,27 +436,29 @@ export class UsersService {
         verificationStatus: true,
         services: {
           include: {
-            service: true
-          }
+            service: true,
+          },
         },
         receivedReviews: {
           select: {
-            note: true
-          }
-        }
-      }
+            note: true,
+          },
+        },
+      },
     });
 
     // 3. Formater pour le frontend (calculer la moyenne des notes)
-    const results = providers.map(p => {
-      const avgRating = p.receivedReviews.length > 0 
-        ? p.receivedReviews.reduce((acc, r) => acc + r.note, 0) / p.receivedReviews.length 
-        : 5.0;
-      
+    const results = providers.map((p) => {
+      const avgRating =
+        p.receivedReviews.length > 0
+          ? p.receivedReviews.reduce((acc, r) => acc + r.note, 0) /
+            p.receivedReviews.length
+          : 5.0;
+
       return {
         ...p,
         rating: avgRating.toFixed(1),
-        nbReviews: p.receivedReviews.length
+        nbReviews: p.receivedReviews.length,
       };
     });
 
@@ -382,18 +466,24 @@ export class UsersService {
       return results.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
     }
 
-    const toRadians = (value: number) => value * Math.PI / 180;
-    const distanceInKm = (provider: typeof results[number]) => {
-      if (provider.latitude == null || provider.longitude == null) return Number.POSITIVE_INFINITY;
+    const toRadians = (value: number) => (value * Math.PI) / 180;
+    const distanceInKm = (provider: (typeof results)[number]) => {
+      if (provider.latitude == null || provider.longitude == null)
+        return Number.POSITIVE_INFINITY;
       const deltaLatitude = toRadians(provider.latitude - latitude!);
       const deltaLongitude = toRadians(provider.longitude - longitude!);
-      const haversine = Math.sin(deltaLatitude / 2) ** 2
-        + Math.cos(toRadians(latitude!)) * Math.cos(toRadians(provider.latitude)) * Math.sin(deltaLongitude / 2) ** 2;
-      return 6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
+      const haversine =
+        Math.sin(deltaLatitude / 2) ** 2 +
+        Math.cos(toRadians(latitude!)) *
+          Math.cos(toRadians(provider.latitude)) *
+          Math.sin(deltaLongitude / 2) ** 2;
+      return (
+        6371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
+      );
     };
 
     return results
-      .map(provider => ({ ...provider, distanceKm: distanceInKm(provider) }))
+      .map((provider) => ({ ...provider, distanceKm: distanceInKm(provider) }))
       .sort((a, b) => a.distanceKm - b.distanceKm)
       .slice(0, limit);
   }

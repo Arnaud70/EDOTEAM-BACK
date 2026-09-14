@@ -9,7 +9,7 @@ export class BookingsService {
 
   constructor(
     private prisma: PrismaService,
-    private notifications: NotificationsService
+    private notifications: NotificationsService,
   ) {}
 
   async create(data: {
@@ -25,7 +25,9 @@ export class BookingsService {
     interventionLongitude?: number;
   }) {
     if (data.clientId === data.prestataireId) {
-      throw new Error('Un prestataire ne peut pas réserver son propre service.');
+      throw new Error(
+        'Un prestataire ne peut pas réserver son propre service.',
+      );
     }
 
     if (data.startTime >= data.endTime) {
@@ -67,20 +69,24 @@ export class BookingsService {
       include: {
         service: true,
         client: { select: { id: true, nom: true, prenom: true, email: true } },
-        prestataire: { select: { id: true, nom: true, prenom: true, email: true } },
+        prestataire: {
+          select: { id: true, nom: true, prenom: true, email: true },
+        },
       },
     });
 
-    void this.notifications.create({
-      userId: data.prestataireId,
-      title: 'Nouveau rendez-vous !',
-      message: `Vous avez une nouvelle demande de réservation pour le service ${booking.service.nom}.`,
-      type: 'BOOKING_CREATED',
-    }).catch((error) => {
-      this.logger.error(
-        `Erreur lors de la notification de réservation: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    });
+    void this.notifications
+      .create({
+        userId: data.prestataireId,
+        title: 'Nouveau rendez-vous !',
+        message: `Vous avez une nouvelle demande de réservation pour le service ${booking.service.nom}.`,
+        type: 'BOOKING_CREATED',
+      })
+      .catch((error) => {
+        this.logger.error(
+          `Erreur lors de la notification de réservation: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
 
     return booking;
   }
@@ -110,9 +116,8 @@ export class BookingsService {
   }
 
   async findAll(userId: string, role: string) {
-    const where = role === 'PRESTATAIRE' 
-      ? { prestataireId: userId } 
-      : { clientId: userId };
+    const where =
+      role === 'PRESTATAIRE' ? { prestataireId: userId } : { clientId: userId };
 
     return this.prisma.booking.findMany({
       where,
@@ -157,7 +162,11 @@ export class BookingsService {
       }
     }
 
-    if (actingUserId && booking.prestataireId !== actingUserId && booking.clientId !== actingUserId) {
+    if (
+      actingUserId &&
+      booking.prestataireId !== actingUserId &&
+      booking.clientId !== actingUserId
+    ) {
       throw new Error('Vous n’êtes pas autorisé à modifier cette réservation.');
     }
 
@@ -170,7 +179,12 @@ export class BookingsService {
       },
     });
 
-    const statusLabel = status === 'CONFIRMED' ? 'confirmé' : status === 'CANCELLED' ? 'annulé' : 'mis à jour';
+    const statusLabel =
+      status === 'CONFIRMED'
+        ? 'confirmé'
+        : status === 'CANCELLED'
+          ? 'annulé'
+          : 'mis à jour';
     await this.notifications.create({
       userId: booking.clientId,
       title: `Rendez-vous ${statusLabel}`,

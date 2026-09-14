@@ -20,7 +20,9 @@ import {
 
 export class UpdateProfileDto {
   @ApiPropertyOptional({ example: 'Jean' })
-  @Transform(trimTransform)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.replace(/\s/g, '').trim() : value,
+  )
   @IsOptional()
   @ValidateIf((o) => o.prenom !== undefined && o.prenom !== '')
   @IsString()
@@ -40,7 +42,9 @@ export class UpdateProfileDto {
   nom?: string;
 
   @ApiPropertyOptional({ example: '+228 90 00 00 00' })
-  @Transform(trimTransform)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.replace(/\s/g, '').trim() : value,
+  )
   @IsOptional()
   @ValidateIf((o) => o.telephone !== undefined && o.telephone !== '')
   @IsString()
@@ -84,7 +88,12 @@ export class UpdateProfileDto {
   @IsString()
   photoUrl?: string;
 
-  @ApiPropertyOptional({ enum: ['HOMME', 'FEMME'], example: 'HOMME', description: 'Utilisé pour l\'icône de profil par défaut quand aucune photo n\'est définie.' })
+  @ApiPropertyOptional({
+    enum: ['HOMME', 'FEMME'],
+    example: 'HOMME',
+    description:
+      "Utilisé pour l'icône de profil par défaut quand aucune photo n'est définie.",
+  })
   @IsOptional()
   @IsIn(['HOMME', 'FEMME'], { message: 'Le genre doit être HOMME ou FEMME' })
   genre?: 'HOMME' | 'FEMME';
@@ -93,8 +102,13 @@ export class UpdateProfileDto {
    * Seul le basculement CLIENT <-> PRESTATAIRE est autorisé ici.
    * L'attribution du rôle ADMIN passe exclusivement par la base / un administrateur.
    */
-  @ApiPropertyOptional({ enum: ['CLIENT', 'PRESTATAIRE'], example: 'PRESTATAIRE' })
+  @ApiPropertyOptional({
+    enum: ['CLIENT', 'PRESTATAIRE'],
+    example: 'PRESTATAIRE',
+  })
   @IsOptional()
-  @IsIn(['CLIENT', 'PRESTATAIRE'], { message: 'Le rôle doit être CLIENT ou PRESTATAIRE' })
+  @IsIn(['CLIENT', 'PRESTATAIRE'], {
+    message: 'Le rôle doit être CLIENT ou PRESTATAIRE',
+  })
   role?: 'CLIENT' | 'PRESTATAIRE';
 }

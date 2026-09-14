@@ -1,4 +1,9 @@
-import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  OnModuleInit,
+  OnModuleDestroy,
+  Logger,
+} from '@nestjs/common';
 import { Prisma, PrismaClient } from '@prisma/client';
 
 /**
@@ -18,6 +23,7 @@ export class PrismaService
   private readonly logger = new Logger(PrismaService.name);
   private isConnected = false;
   private keepAliveTimer?: NodeJS.Timeout;
+  private reconnectAttempt?: Promise<void>;
   /** Résout quand la première tentative de connexion (avec retries) est terminée. Utile pour les tests. */
   connectionAttempt: Promise<void> = Promise.resolve();
 
@@ -34,7 +40,11 @@ export class PrismaService
     // comme "unhandledRejection" et ne coupent pas le serveur.
     this.$on('error', (event) => {
       const message = event.message || '';
-      if (/kind:\s*Closed|Connection\s*reset|terminating connection|server closed the connection/i.test(message)) {
+      if (
+        /kind:\s*Closed|Connection\s*reset|terminating connection|server closed the connection|Engine is not yet connected/i.test(
+          message,
+        )
+      ) {
         this.isConnected = false;
         this.logger.warn(
           'Connexion PostgreSQL fermée par le serveur (veille Neon ?). Reconnexion au prochain appel / ping.',
@@ -50,7 +60,10 @@ export class PrismaService
   async onModuleInit() {
     // Connexion non bloquante : le serveur démarre même si la base est momentanément indisponible.
     this.connectionAttempt = this.connectWithRetry().catch((err) => {
-      this.logger.error('Échec de connexion à la base après plusieurs tentatives', err);
+      this.logger.error(
+        'Échec de connexion à la base après plusieurs tentatives',
+        err,
+      );
     });
 
     this.startKeepAlive();
@@ -73,11 +86,26 @@ export class PrismaService
           await new Promise((resolve) => setTimeout(resolve, delay));
         } else {
           this.logger.error(
-            '❌ Connexion à la base impossible pour le moment. Le serveur continue ; les routes utilisant la base échoueront jusqu\'au rétablissement.',
+            "❌ Connexion à la base impossible pour le moment. Le serveur continue ; les routes utilisant la base échoueront jusqu'au rétablissement.",
             err instanceof Error ? err.message : String(err),
           );
         }
       }
+    }
+  }
+
+  async ensureConnected(): Promise<void> {
+    if (this.isConnected) return;
+
+    if (!this.reconnectAttempt) {
+      this.reconnectAttempt = this.connectWithRetry(3, 250).finally(() => {
+        this.reconnectAttempt = undefined;
+      });
+    }
+
+    await this.reconnectAttempt;
+    if (!this.isConnected) {
+      throw new Error('La base de données est momentanément indisponible.');
     }
   }
 
@@ -101,20 +129,18 @@ export class PrismaService
         })
         .catch(async (err) => {
           this.isConnected = false;
-          this.logger.warn(`Ping base échoué (${err?.message ?? err}). Tentative de reconnexion...`);
+          this.logger.warn(
+            `Ping base échoué (${err?.message ?? err}). Tentative de reconnexion...`,
+          );
           try {
-            await this.$disconnect();
-          } catch {
-            /* ignore */
-          }
-          try {
-            await this.$connect();
-            this.isConnected = true;
+            await this.ensureConnected();
             this.logger.log('✅ Reconnexion à la base réussie');
           } catch (reconnectErr) {
             this.logger.warn(
               `Reconnexion impossible pour l'instant : ${
-                reconnectErr instanceof Error ? reconnectErr.message : String(reconnectErr)
+                reconnectErr instanceof Error
+                  ? reconnectErr.message
+                  : String(reconnectErr)
               }`,
             );
           }

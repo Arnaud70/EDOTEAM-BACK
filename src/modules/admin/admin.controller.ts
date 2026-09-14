@@ -1,4 +1,16 @@
-import { Controller, Get, Patch, Post, Delete, Body, Param, Query, UseGuards, Req, UseInterceptors } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  Req,
+  UseInterceptors,
+} from '@nestjs/common';
 import { CacheInterceptor } from '@nestjs/cache-manager';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -22,11 +34,14 @@ export class AdminController {
 
   @ApiOperation({ summary: 'Liste de tous les utilisateurs' })
   @Get('users')
-  getUsers(@Query('role') role?: string, @Query('status') status?: 'ACTIVE' | 'SUSPENDED') {
+  getUsers(
+    @Query('role') role?: string,
+    @Query('status') status?: 'ACTIVE' | 'SUSPENDED',
+  ) {
     return this.adminService.getAllUsers(role, status);
   }
 
-  @ApiOperation({ summary: 'Logs d\'activité système' })
+  @ApiOperation({ summary: "Logs d'activité système" })
   @Get('logs')
   getLogs(@Query('limit') limit?: number) {
     return this.adminService.activityLogs(limit);
@@ -57,7 +72,10 @@ export class AdminController {
   @ApiOperation({ summary: 'Refuser un profil inapproprié ou non conforme' })
   @Patch('users/:id/reject')
   rejectUser(@Param('id') id: string, @Body('reason') reason?: string) {
-    return this.adminService.rejectUser(id, reason || 'Profil non conforme aux conditions de la plateforme.');
+    return this.adminService.rejectUser(
+      id,
+      reason || 'Profil non conforme aux conditions de la plateforme.',
+    );
   }
 
   @ApiOperation({ summary: 'Suspendre un utilisateur (soft delete)' })
@@ -82,13 +100,18 @@ export class AdminController {
 
   @ApiOperation({ summary: 'Créer une nouvelle catégorie de service' })
   @Post('services')
-  createService(@Body() data: { nom: string; description?: string; icon?: string }) {
+  createService(
+    @Body() data: { nom: string; description?: string; icon?: string },
+  ) {
     return this.adminService.createService(data);
   }
 
   @ApiOperation({ summary: 'Modifier une catégorie de service' })
   @Patch('services/:id')
-  updateService(@Param('id') id: string, @Body() data: { nom?: string; description?: string; icon?: string }) {
+  updateService(
+    @Param('id') id: string,
+    @Body() data: { nom?: string; description?: string; icon?: string },
+  ) {
     return this.adminService.updateService(id, data);
   }
 

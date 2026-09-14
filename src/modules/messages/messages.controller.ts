@@ -1,4 +1,12 @@
-import { Controller, Post, Get, Body, Param, Request, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { MessagesService } from './messages.service';
@@ -10,7 +18,10 @@ export class SendMessageDto {
   @IsNotEmpty()
   receiverId: string;
 
-  @ApiProperty({ example: 'Bonjour, je suis intéressé par votre service.', maxLength: 1000 })
+  @ApiProperty({
+    example: 'Bonjour, je suis intéressé par votre service.',
+    maxLength: 1000,
+  })
   @IsString()
   @IsNotEmpty()
   @MaxLength(1000)
@@ -27,7 +38,11 @@ export class MessagesController {
   @ApiOperation({ summary: 'Envoyer un message' })
   @Post()
   send(@Request() req, @Body() dto: SendMessageDto) {
-    return this.messagesService.sendMessage(req.user.id, dto.receiverId, dto.content);
+    return this.messagesService.sendMessage(
+      req.user.id,
+      dto.receiverId,
+      dto.content,
+    );
   }
 
   @ApiOperation({ summary: 'Lister mes conversations' })

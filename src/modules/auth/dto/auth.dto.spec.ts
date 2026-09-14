@@ -14,7 +14,10 @@ const base = {
 
 const isValid = (payload: any) => {
   const dto = plainToInstance(RegisterDto, payload);
-  return validateSync(dto, { whitelist: true, forbidNonWhitelisted: true }).length === 0;
+  return (
+    validateSync(dto, { whitelist: true, forbidNonWhitelisted: true })
+      .length === 0
+  );
 };
 
 describe('RegisterDto - contraintes de champs', () => {
@@ -35,7 +38,9 @@ describe('RegisterDto - contraintes de champs', () => {
   });
 
   it('accepte les noms composés avec espace, tiret et apostrophe', () => {
-    expect(isValid({ ...base, nom: 'N’Diaye-Koffi', prenom: 'Marie Claire' })).toBe(true);
+    expect(
+      isValid({ ...base, nom: 'N’Diaye-Koffi', prenom: 'Marie Claire' }),
+    ).toBe(true);
   });
 
   it.each([

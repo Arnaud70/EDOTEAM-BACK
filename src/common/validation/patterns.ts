@@ -9,7 +9,8 @@ export const NAME_REGEX_MESSAGE =
   'Ce champ ne doit pas contenir de chiffres ni de caractères spéciaux';
 
 // Mot de passe robuste : au moins une minuscule, une majuscule, un chiffre et un caractère spécial.
-export const PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/;
+export const PASSWORD_REGEX =
+  /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/;
 export const PASSWORD_REGEX_MESSAGE =
   'Le mot de passe doit contenir au moins une minuscule, une majuscule, un chiffre et un caractère spécial';
 
@@ -17,14 +18,31 @@ export const PASSWORD_MIN_LENGTH = 8;
 // bcrypt ne prend en compte que les 72 premiers octets : on bloque au-delà pour éviter la confusion.
 export const PASSWORD_MAX_LENGTH = 72;
 
-// Téléphone : chiffres, espaces, tirets, parenthèses et un éventuel préfixe "+". 6 à 20 caractères utiles.
-export const PHONE_REGEX = /^\+?[0-9 ()-]{6,20}$/;
-export const PHONE_REGEX_MESSAGE = 'Le numéro de téléphone n’est pas valide';
+// Téléphone togolais : préfixe +228 et exactement 8 chiffres.
+export const PHONE_REGEX = /^\+228\d{8}$/;
+export const PHONE_REGEX_MESSAGE =
+  'Le numéro doit être togolais et contenir 8 chiffres après +228';
 
 export const BANNED_WORDS = [
-  'sexe', 'drogue', 'arme', 'tueur', 'prostituee', 'escort', 'vol', 'arnaque',
-  'hack', 'piratage', 'drogues', 'armes', 'murder', 'sex', 'porn', 'porno',
-  'assassin', 'viagra', 'drog',
+  'sexe',
+  'drogue',
+  'arme',
+  'tueur',
+  'prostituee',
+  'escort',
+  'vol',
+  'arnaque',
+  'hack',
+  'piratage',
+  'drogues',
+  'armes',
+  'murder',
+  'sex',
+  'porn',
+  'porno',
+  'assassin',
+  'viagra',
+  'drog',
 ];
 
 export const containsBannedWord = (value?: string | null): boolean => {

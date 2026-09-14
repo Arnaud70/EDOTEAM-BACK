@@ -14,12 +14,16 @@ import { validateEnv } from './common/config/validate-env';
 // Filet de sécurité : une erreur asynchrone isolée (ex. coupure momentanée de la base Neon)
 // ne doit jamais arrêter le serveur.
 process.on('unhandledRejection', (reason: any) => {
-  // eslint-disable-next-line no-console
-  console.error('[unhandledRejection] Le serveur continue de tourner :', reason?.message ?? reason);
+  console.error(
+    '[unhandledRejection] Le serveur continue de tourner :',
+    reason?.message ?? reason,
+  );
 });
 process.on('uncaughtException', (error: Error) => {
-  // eslint-disable-next-line no-console
-  console.error('[uncaughtException] Le serveur continue de tourner :', error?.message ?? error);
+  console.error(
+    '[uncaughtException] Le serveur continue de tourner :',
+    error?.message ?? error,
+  );
 });
 
 async function bootstrap() {
@@ -29,9 +33,11 @@ async function bootstrap() {
   app.enableShutdownHooks();
 
   // Sécurité headers
-  app.use(helmet({
-    crossOriginResourcePolicy: false,
-  }));
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: false,
+    }),
+  );
 
   // Cookie parser pour les refresh tokens
   app.use(cookieParser());
@@ -57,7 +63,13 @@ async function bootstrap() {
       ...extraOrigins,
       ...(isProd
         ? []
-        : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173', 'http://localhost:5174']),
+        : [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'http://localhost:5173',
+            'http://localhost:5174',
+            'http://127.0.0.1:5173',
+          ]),
     ].filter(Boolean),
   );
 

@@ -25,7 +25,9 @@ export async function buildCacheOptions(): Promise<CacheModuleOptions> {
     const { createKeyv } = await import('@keyv/redis');
     const keyv = createKeyv(redisUrl, { namespace: 'edoteam' });
     keyv.on('error', (err: any) => {
-      logger.warn(`Redis cache indisponible (${err?.message ?? err}) — bascule silencieuse sur la base.`);
+      logger.warn(
+        `Redis cache indisponible (${err?.message ?? err}) — bascule silencieuse sur la base.`,
+      );
     });
     logger.log('Cache : Redis connecté.');
     return { stores: [keyv], ttl };

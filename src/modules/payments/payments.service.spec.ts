@@ -12,14 +12,17 @@ jest.mock('stripe', () => {
 
 const makeConfig = (overrides: Record<string, string> = {}) =>
   ({
-    get: jest.fn((key: string) => ({
-      STRIPE_SECRET_KEY: 'sk_test_123',
-      STRIPE_CURRENCY: 'xof',
-      FRONTEND_URL: 'http://localhost:5173',
-      KKIAPAY_PAYMENT_URL: 'https://checkout.kkiapay.me/',
-      ...overrides,
-    }[key])),
-  } as unknown as ConfigService);
+    get: jest.fn(
+      (key: string) =>
+        ({
+          STRIPE_SECRET_KEY: 'sk_test_123',
+          STRIPE_CURRENCY: 'xof',
+          FRONTEND_URL: 'http://localhost:5173',
+          KKIAPAY_PAYMENT_URL: 'https://checkout.kkiapay.me/',
+          ...overrides,
+        })[key],
+    ),
+  }) as unknown as ConfigService;
 
 describe('PaymentsService', () => {
   it('génère un lien de paiement à partir d’une réservation', async () => {
@@ -36,7 +39,9 @@ describe('PaymentsService', () => {
       },
     } as unknown as PrismaService;
 
-    const notifications = { create: jest.fn() } as unknown as NotificationsService;
+    const notifications = {
+      create: jest.fn(),
+    } as unknown as NotificationsService;
 
     const service = new PaymentsService(prisma, makeConfig(), notifications);
     const result = await service.createCheckoutSession('booking-1', 'client-1');
@@ -53,14 +58,15 @@ describe('PaymentsService', () => {
 
   it('utilise un montant par défaut si la réservation est introuvable', async () => {
     const prisma = {
-      booking: { findUnique: jest.fn().mockResolvedValue(null), update: jest.fn() },
+      booking: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        update: jest.fn(),
+      },
     } as unknown as PrismaService;
 
-    const service = new PaymentsService(
-      prisma,
-      makeConfig(),
-      { create: jest.fn() } as unknown as NotificationsService,
-    );
+    const service = new PaymentsService(prisma, makeConfig(), {
+      create: jest.fn(),
+    } as unknown as NotificationsService);
     const result = await service.createCheckoutSession('missing', 'client-1');
 
     expect(result.url).toContain('amount=1000');

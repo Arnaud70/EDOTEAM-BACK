@@ -7,7 +7,10 @@ export class PaymentsController {
 
   @Post('checkout')
   async createCheckout(@Req() req, @Body('bookingId') bookingId: string) {
-    return this.paymentsService.createCheckoutSession(bookingId, req.user?.id || 'debug-user');
+    return this.paymentsService.createCheckoutSession(
+      bookingId,
+      req.user?.id || 'debug-user',
+    );
   }
 
   @Post('webhook')

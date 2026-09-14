@@ -11,13 +11,16 @@ export class ReportsService {
     private notificationsService: NotificationsService,
   ) {}
 
-  async create(reporterId: string, data: {
-    motif: string;
-    description?: string;
-    avisId?: string;
-    messageId?: string;
-    targetUserId?: string;
-  }) {
+  async create(
+    reporterId: string,
+    data: {
+      motif: string;
+      description?: string;
+      avisId?: string;
+      messageId?: string;
+      targetUserId?: string;
+    },
+  ) {
     const report = await this.prisma.report.create({
       data: {
         reporterId,
@@ -31,7 +34,9 @@ export class ReportsService {
 
     // Notify admins
     try {
-      const admins = await this.prisma.user.findMany({ where: { role: 'ADMIN' } });
+      const admins = await this.prisma.user.findMany({
+        where: { role: 'ADMIN' },
+      });
       for (const admin of admins) {
         await this.notificationsService.create({
           userId: admin.id,
@@ -41,7 +46,10 @@ export class ReportsService {
         });
       }
     } catch (e) {
-      this.logger.error('Erreur lors de la notification des admins pour le signalement', e);
+      this.logger.error(
+        'Erreur lors de la notification des admins pour le signalement',
+        e,
+      );
     }
 
     return report;
@@ -52,16 +60,18 @@ export class ReportsService {
       where: status ? { status: status as any } : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
-        reporter: { select: { id: true, nom: true, prenom: true, email: true } },
+        reporter: {
+          select: { id: true, nom: true, prenom: true, email: true },
+        },
         review: true,
         message: true,
         resolver: { select: { id: true, nom: true, prenom: true } },
       },
     });
 
-    return reports.map(r => ({
+    return reports.map((r) => ({
       id: r.id,
-      type: r.reviewId ? 'AVIS' : (r.messageId ? 'MESSAGE' : 'USER'),
+      type: r.reviewId ? 'AVIS' : r.messageId ? 'MESSAGE' : 'USER',
       reason: r.motif,
       description: r.description || '',
       status: r.status,
@@ -71,11 +81,17 @@ export class ReportsService {
         prenom: r.reporter.prenom || '',
       },
       targetId: r.targetUserId || r.reviewId || r.messageId || 'N/A',
-      resolvedBy: r.resolver ? `${r.resolver.prenom || ''} ${r.resolver.nom || ''}`.trim() : null,
+      resolvedBy: r.resolver
+        ? `${r.resolver.prenom || ''} ${r.resolver.nom || ''}`.trim()
+        : null,
     }));
   }
 
-  async resolve(reportId: string, adminId: string, status: 'RESOLVED' | 'REJECTED') {
+  async resolve(
+    reportId: string,
+    adminId: string,
+    status: 'RESOLVED' | 'REJECTED',
+  ) {
     return this.prisma.report.update({
       where: { id: reportId },
       data: { status, resolvedById: adminId, resolvedAt: new Date() },

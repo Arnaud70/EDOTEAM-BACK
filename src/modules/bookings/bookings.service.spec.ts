@@ -35,7 +35,9 @@ describe('BookingsService', () => {
         totalAmount: 100,
         address: 'Paris',
       }),
-    ).rejects.toThrow('Un prestataire ne peut pas réserver son propre service.');
+    ).rejects.toThrow(
+      'Un prestataire ne peut pas réserver son propre service.',
+    );
 
     expect(prisma.booking.create).not.toHaveBeenCalled();
   });
@@ -79,7 +81,9 @@ describe('BookingsService', () => {
       prestataire: { nom: 'Dupont', prenom: 'Alice' },
     });
 
-    await expect(service.updateStatus('booking-1', BookingStatus.CONFIRMED, 'provider-1')).resolves.toMatchObject({
+    await expect(
+      service.updateStatus('booking-1', BookingStatus.CONFIRMED, 'provider-1'),
+    ).resolves.toMatchObject({
       id: 'booking-1',
       status: BookingStatus.CONFIRMED,
     });

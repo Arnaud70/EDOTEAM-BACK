@@ -1,4 +1,9 @@
-import { Injectable, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MessagesService } from '../messages/messages.service';
 
@@ -12,7 +17,12 @@ export class AvisService {
     private notificationsService: NotificationsService,
   ) {}
 
-  async create(clientId: string, prestataireId: string, note: number, commentaire?: string) {
+  async create(
+    clientId: string,
+    prestataireId: string,
+    note: number,
+    commentaire?: string,
+  ) {
     if (clientId === prestataireId) {
       throw new BadRequestException('Vous ne pouvez pas vous noter vous-même');
     }
@@ -21,7 +31,10 @@ export class AvisService {
     }
 
     // Vérification interaction préalable (message ou réservation)
-    const hasInteracted = await this.messagesService.hasInteracted(clientId, prestataireId);
+    const hasInteracted = await this.messagesService.hasInteracted(
+      clientId,
+      prestataireId,
+    );
     const hasBooked = await this.prisma.booking.count({
       where: {
         clientId,
@@ -31,7 +44,9 @@ export class AvisService {
     });
 
     if (!hasInteracted && hasBooked === 0) {
-      throw new BadRequestException('Vous ne pouvez laisser un avis qu’après une interaction avec ce prestataire.');
+      throw new BadRequestException(
+        'Vous ne pouvez laisser un avis qu’après une interaction avec ce prestataire.',
+      );
     }
 
     const interactionVerified = hasInteracted || hasBooked > 0;
@@ -41,13 +56,17 @@ export class AvisService {
       where: { clientId_prestataireId: { clientId, prestataireId } },
     });
     if (existing) {
-      throw new ConflictException('Vous avez déjà laissé un avis pour ce prestataire');
+      throw new ConflictException(
+        'Vous avez déjà laissé un avis pour ce prestataire',
+      );
     }
 
     const avis = await this.prisma.avis.create({
       data: { clientId, prestataireId, note, commentaire, interactionVerified },
       include: {
-        client: { select: { id: true, nom: true, prenom: true, photoUrl: true } },
+        client: {
+          select: { id: true, nom: true, prenom: true, photoUrl: true },
+        },
       },
     });
 
@@ -67,11 +86,16 @@ export class AvisService {
       where: { prestataireId },
       orderBy: { createdAt: 'desc' },
       include: {
-        client: { select: { id: true, nom: true, prenom: true, photoUrl: true } },
+        client: {
+          select: { id: true, nom: true, prenom: true, photoUrl: true },
+        },
       },
     });
 
-    const avg = avis.length > 0 ? avis.reduce((acc, a) => acc + a.note, 0) / avis.length : 0;
+    const avg =
+      avis.length > 0
+        ? avis.reduce((acc, a) => acc + a.note, 0) / avis.length
+        : 0;
 
     return {
       noteMoyenne: Math.round(avg * 10) / 10,
@@ -80,7 +104,12 @@ export class AvisService {
     };
   }
 
-  async update(avisId: string, clientId: string, note: number, commentaire?: string) {
+  async update(
+    avisId: string,
+    clientId: string,
+    note: number,
+    commentaire?: string,
+  ) {
     const avis = await this.prisma.avis.findUnique({ where: { id: avisId } });
     if (!avis || avis.clientId !== clientId) {
       throw new ForbiddenException('Avis non trouvé ou non autorisé');
@@ -89,7 +118,9 @@ export class AvisService {
     // Modifiable pendant 7 jours
     const diff = Date.now() - avis.createdAt.getTime();
     if (diff > 7 * 24 * 60 * 60 * 1000) {
-      throw new BadRequestException('Vous ne pouvez plus modifier cet avis (délai de 7 jours dépassé)');
+      throw new BadRequestException(
+        'Vous ne pouvez plus modifier cet avis (délai de 7 jours dépassé)',
+      );
     }
 
     return this.prisma.avis.update({

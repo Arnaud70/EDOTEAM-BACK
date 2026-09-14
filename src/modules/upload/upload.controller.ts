@@ -1,15 +1,30 @@
-import { Controller, Post, UseInterceptors, UploadedFile, UseGuards, Request, InternalServerErrorException, BadRequestException, Get } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  UseInterceptors,
+  UploadedFile,
+  UseGuards,
+  Request,
+  InternalServerErrorException,
+  BadRequestException,
+  Get,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { memoryStorage } from 'multer';
 import { extname, join } from 'path';
-import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiBearerAuth } from '@nestjs/swagger';
+import {
+  ApiTags,
+  ApiOperation,
+  ApiConsumes,
+  ApiBody,
+  ApiBearerAuth,
+} from '@nestjs/swagger';
 import { promises as fs } from 'fs';
 
 @ApiTags('Upload')
 @Controller('upload')
 export class UploadController {
-  
   @Get('health')
   health() {
     return { status: 'ok', root: process.cwd() };
@@ -37,7 +52,12 @@ export class UploadController {
       limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
       fileFilter: (req, file, callback) => {
         if (!file.originalname.match(/\.(jpg|jpeg|png|gif|pdf)$/i)) {
-          return callback(new Error('Seuls les images (jpg, png, gif) et les documents PDF sont autorisés !'), false);
+          return callback(
+            new Error(
+              'Seuls les images (jpg, png, gif) et les documents PDF sont autorisés !',
+            ),
+            false,
+          );
         }
         callback(null, true);
       },
@@ -48,12 +68,14 @@ export class UploadController {
       // Diagnostic check: what did we actually receive?
       const body = req.body;
       const contentType = req.headers['content-type'];
-      throw new BadRequestException(`Fichier non trouvé. Type reçu: ${contentType}. Champs body: ${JSON.stringify(Object.keys(body))}`);
+      throw new BadRequestException(
+        `Fichier non trouvé. Type reçu: ${contentType}. Champs body: ${JSON.stringify(Object.keys(body))}`,
+      );
     }
 
     try {
       const uploadsDir = join(process.cwd(), 'uploads');
-      
+
       // S'assurer que le dossier existe
       await fs.mkdir(uploadsDir, { recursive: true });
 
@@ -67,7 +89,7 @@ export class UploadController {
       const protocol = req.protocol;
       const host = req.get('host');
       const url = `${protocol}://${host}/uploads/${filename}`;
-      
+
       return {
         url: url,
         filename: filename,
@@ -76,7 +98,9 @@ export class UploadController {
       };
     } catch (error) {
       console.error('Erreur lors de la sauvegarde du fichier:', error);
-      throw new InternalServerErrorException('Erreur critique lors de la sauvegarde du fichier sur le serveur.');
+      throw new InternalServerErrorException(
+        'Erreur critique lors de la sauvegarde du fichier sur le serveur.',
+      );
     }
   }
 }

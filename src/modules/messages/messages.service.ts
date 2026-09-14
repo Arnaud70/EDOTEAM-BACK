@@ -1,4 +1,8 @@
-import { Injectable, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApiTags } from '@nestjs/swagger';
@@ -7,12 +11,14 @@ import { ApiTags } from '@nestjs/swagger';
 export class MessagesService {
   constructor(
     private prisma: PrismaService,
-    private notifications: NotificationsService
+    private notifications: NotificationsService,
   ) {}
 
   async sendMessage(senderId: string, receiverId: string, content: string) {
     if (senderId === receiverId) {
-      throw new BadRequestException('Vous ne pouvez pas vous envoyer un message à vous-même');
+      throw new BadRequestException(
+        'Vous ne pouvez pas vous envoyer un message à vous-même',
+      );
     }
 
     if (content.length > 1000) {
@@ -22,8 +28,12 @@ export class MessagesService {
     const message = await this.prisma.message.create({
       data: { senderId, receiverId, content },
       include: {
-        sender: { select: { id: true, nom: true, prenom: true, photoUrl: true } },
-        receiver: { select: { id: true, nom: true, prenom: true, photoUrl: true } },
+        sender: {
+          select: { id: true, nom: true, prenom: true, photoUrl: true },
+        },
+        receiver: {
+          select: { id: true, nom: true, prenom: true, photoUrl: true },
+        },
       },
     });
 
@@ -46,8 +56,12 @@ export class MessagesService {
       },
       orderBy: { createdAt: 'desc' },
       include: {
-        sender: { select: { id: true, nom: true, prenom: true, photoUrl: true } },
-        receiver: { select: { id: true, nom: true, prenom: true, photoUrl: true } },
+        sender: {
+          select: { id: true, nom: true, prenom: true, photoUrl: true },
+        },
+        receiver: {
+          select: { id: true, nom: true, prenom: true, photoUrl: true },
+        },
       },
     });
 
@@ -87,7 +101,9 @@ export class MessagesService {
       },
       orderBy: { createdAt: 'asc' },
       include: {
-        sender: { select: { id: true, nom: true, prenom: true, photoUrl: true } },
+        sender: {
+          select: { id: true, nom: true, prenom: true, photoUrl: true },
+        },
       },
     });
   }

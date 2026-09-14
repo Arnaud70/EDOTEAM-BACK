@@ -16,23 +16,25 @@ const dayMap: DayOfWeek[] = [
 export class AvailabilityService {
   constructor(private prisma: PrismaService) {}
 
-  async setAvailability(prestataireId: string, slots: Array<{
-    dayOfWeek: number;
-    startTime: string;
-    endTime: string;
-    isRecurring?: boolean;
-  }>) {
-
+  async setAvailability(
+    prestataireId: string,
+    slots: Array<{
+      dayOfWeek: number;
+      startTime: string;
+      endTime: string;
+      isRecurring?: boolean;
+    }>,
+  ) {
     // Remove old recurring slots and replace
     await this.prisma.availability.deleteMany({
       where: { prestataireId, isRecurring: true },
     });
 
     return this.prisma.availability.createMany({
-      data: slots.map(s => {
+      data: slots.map((s) => {
         const today = new Date();
         const dateStr = today.toISOString().split('T')[0];
-        
+
         return {
           prestataireId,
           dayOfWeek: dayMap[s.dayOfWeek % 7],

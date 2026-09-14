@@ -9,9 +9,9 @@ export class ServicesService {
     return this.prisma.service.findMany({
       include: {
         _count: {
-          select: { providers: true }
-        }
-      }
+          select: { providers: true },
+        },
+      },
     });
   }
 
@@ -20,9 +20,9 @@ export class ServicesService {
       where: { id },
       include: {
         providers: {
-          include: { prestataire: true }
-        }
-      }
+          include: { prestataire: true },
+        },
+      },
     });
   }
 
@@ -41,7 +41,12 @@ export class ServicesService {
     });
   }
 
-  async addServiceToProvider(userId: string, serviceId: string, prixIndicatif?: number, experience?: number) {
+  async addServiceToProvider(
+    userId: string,
+    serviceId: string,
+    prixIndicatif?: number,
+    experience?: number,
+  ) {
     return this.prisma.prestataireService.create({
       data: {
         prestataireId: userId,

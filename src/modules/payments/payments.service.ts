@@ -15,10 +15,13 @@ export class PaymentsService {
     private readonly config: ConfigService,
     private readonly notifications: NotificationsService,
   ) {
-    this.paymentProvider = this.config.get<string>('PAYMENT_PROVIDER') || 'fedapay';
+    this.paymentProvider =
+      this.config.get<string>('PAYMENT_PROVIDER') || 'fedapay';
     const secretKey = this.config.get<string>('STRIPE_SECRET_KEY');
     if (!secretKey) {
-      this.logger.warn('STRIPE_SECRET_KEY is not configured. Payment endpoints will be disabled.');
+      this.logger.warn(
+        'STRIPE_SECRET_KEY is not configured. Payment endpoints will be disabled.',
+      );
     }
     this.stripe = new Stripe(secretKey || 'sk_test_placeholder', {
       apiVersion: '2026-06-24.dahlia',
@@ -34,13 +37,20 @@ export class PaymentsService {
       },
     });
 
-    const paymentUrl = this.config.get<string>('KKIAPAY_PAYMENT_URL')
-      || this.config.get<string>('LOCAL_PAYMENT_URL')
-      || 'https://www.kkiapay.me/';
+    const paymentUrl =
+      this.config.get<string>('KKIAPAY_PAYMENT_URL') ||
+      this.config.get<string>('LOCAL_PAYMENT_URL') ||
+      'https://www.kkiapay.me/';
 
-    const fallbackAmount = booking?.totalAmount ? Math.round(Number(booking.totalAmount)) : 1000;
-    const fallbackReference = booking?.id ? `booking-${booking.id}` : `booking-${Date.now()}`;
-    const fallbackDescription = booking?.service?.nom ? `Réservation - ${booking.service.nom}` : 'Réservation EDOTEAM';
+    const fallbackAmount = booking?.totalAmount
+      ? Math.round(Number(booking.totalAmount))
+      : 1000;
+    const fallbackReference = booking?.id
+      ? `booking-${booking.id}`
+      : `booking-${Date.now()}`;
+    const fallbackDescription = booking?.service?.nom
+      ? `Réservation - ${booking.service.nom}`
+      : 'Réservation EDOTEAM';
     const callbackUrl = `${this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173'}/bookings?payment=success`;
     const cancelUrl = `${this.config.get<string>('FRONTEND_URL') || 'http://localhost:5173'}/bookings?payment=cancelled`;
 
