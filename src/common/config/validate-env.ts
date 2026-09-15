@@ -50,6 +50,16 @@ export function validateEnv(): void {
     }
   }
 
+  for (const key of [
+    'CLOUDINARY_CLOUD_NAME',
+    'CLOUDINARY_API_KEY',
+    'CLOUDINARY_API_SECRET',
+  ]) {
+    if (!process.env[key]) {
+      errors.push(`${key} est manquant (stockage des fichiers Cloudinary)`);
+    }
+  }
+
   if (
     process.env.MAIL_FROM_EMAIL &&
     !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(process.env.MAIL_FROM_EMAIL)

@@ -10,6 +10,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { AvailabilityService } from './availability.service';
+import { AvailabilitySlotDto } from './dto/availability-slot.dto';
 
 @ApiTags('📅 Disponibilités')
 @ApiBearerAuth('JWT')
@@ -20,7 +21,7 @@ export class AvailabilityController {
 
   @ApiOperation({ summary: 'Définir mes disponibilités (prestataire)' })
   @Post()
-  set(@Request() req, @Body() slots: any[]) {
+  set(@Request() req, @Body() slots: AvailabilitySlotDto[]) {
     return this.availabilityService.setAvailability(req.user.id, slots);
   }
 

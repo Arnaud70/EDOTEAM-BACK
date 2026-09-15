@@ -88,6 +88,12 @@ export class UpdateProfileDto {
   @IsString()
   photoUrl?: string;
 
+  @ApiPropertyOptional({ example: 'edoteam/users/user-id/profile/abc123' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  photoPublicId?: string;
+
   @ApiPropertyOptional({
     enum: ['HOMME', 'FEMME'],
     example: 'HOMME',

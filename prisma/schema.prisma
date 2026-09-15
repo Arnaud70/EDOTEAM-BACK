@@ -20,6 +20,7 @@ model User {
   nom                   String
   passwordHash          String               @map("password_hash")
   photoUrl              String?              @map("photo_url")
+  photoPublicId         String?              @map("photo_public_id")
   genre                 Genre?
   prenom                String?
   role                  Role                 @default(CLIENT)
@@ -159,6 +160,8 @@ model Media {
   id        String    @id @default(uuid())
   userId    String    @map("user_id")
   url       String
+  cloudinaryPublicId String? @map("cloudinary_public_id")
+  cloudinaryResourceType String? @map("cloudinary_resource_type")
   type      MediaType
   mimeType  String?   @map("mime_type")
   size      Int?

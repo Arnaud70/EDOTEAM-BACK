@@ -21,9 +21,9 @@ export class BookingsService {
     endTime: Date;
     totalAmount: number;
     address: string;
+    clientNote?: string;
     interventionLatitude?: number;
     interventionLongitude?: number;
-    clientNote?: string;
   }) {
     if (data.clientId === data.prestataireId) {
       throw new Error(
@@ -31,10 +31,15 @@ export class BookingsService {
       );
     }
 
-    this.validateCoordinates(data.interventionLatitude, data.interventionLongitude);
-
     if (data.startTime >= data.endTime) {
       throw new Error('La date de fin doit être après la date de début.');
+    }
+
+    if (
+      (data.interventionLatitude == null) !==
+      (data.interventionLongitude == null)
+    ) {
+      throw new Error('Les coordonnées GPS doivent être fournies ensemble.');
     }
 
     const availability = await this.getAvailabilityForDate(
@@ -84,9 +89,9 @@ export class BookingsService {
         endTime: data.endTime,
         totalAmount: data.totalAmount,
         address: data.address,
+        clientNote: data.clientNote,
         interventionLatitude: data.interventionLatitude,
         interventionLongitude: data.interventionLongitude,
-        clientNote: data.clientNote?.trim() || undefined,
       },
       include: {
         service: true,
@@ -162,22 +167,6 @@ export class BookingsService {
 
   private minutesFromDate(value: Date): number {
     return value.getUTCHours() * 60 + value.getUTCMinutes();
-  }
-
-  private validateCoordinates(latitude?: number, longitude?: number): void {
-    if (latitude == null && longitude == null) return;
-    if (
-      latitude == null ||
-      longitude == null ||
-      !Number.isFinite(latitude) ||
-      !Number.isFinite(longitude) ||
-      latitude < -90 ||
-      latitude > 90 ||
-      longitude < -180 ||
-      longitude > 180
-    ) {
-      throw new Error('Les coordonnées GPS fournies sont invalides.');
-    }
   }
 
   async findAll(userId: string, role: string) {

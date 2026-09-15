@@ -35,6 +35,7 @@ export class BookingsController {
         dto.interventionLongitude == null
           ? undefined
           : Number(dto.interventionLongitude),
+          clientNote: dto.clientNote?.trim() || undefined,
     });
   }
 

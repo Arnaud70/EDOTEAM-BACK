@@ -22,6 +22,7 @@ import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { AddMediaDto } from './dto/add-media.dto';
 
 @ApiTags(' Utilisateurs')
 @Controller('users')
@@ -116,7 +117,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Ajouter un média au portfolio ou profil' })
   addMedia(
     @Request() req,
-    @Body() data: { url: string; type: 'PROFILE' | 'WORK' | 'DOCUMENT' },
+    @Body() data: AddMediaDto,
   ) {
     return this.usersService.addMedia(req.user.id, data);
   }

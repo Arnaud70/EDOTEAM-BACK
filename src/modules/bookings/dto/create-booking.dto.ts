@@ -1,14 +1,12 @@
 import { Type } from 'class-transformer';
 import {
   IsDateString,
-  IsInt,
-  IsLatitude,
-  IsLongitude,
   IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
   Min,
 } from 'class-validator';
@@ -40,17 +38,21 @@ export class CreateBookingDto {
   address: string;
 
   @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  clientNote?: string;
+
+  @IsOptional()
   @Type(() => Number)
-  @IsLatitude()
+  @IsNumber()
+  @Min(-90)
+  @Max(90)
   interventionLatitude?: number;
 
   @IsOptional()
   @Type(() => Number)
-  @IsLongitude()
+  @IsNumber()
+  @Min(-180)
+  @Max(180)
   interventionLongitude?: number;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  clientNote?: string;
 }

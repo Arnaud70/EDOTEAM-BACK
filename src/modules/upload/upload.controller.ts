@@ -12,7 +12,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { memoryStorage } from 'multer';
-import { extname, join } from 'path';
 import {
   ApiTags,
   ApiOperation,
@@ -20,11 +19,13 @@ import {
   ApiBody,
   ApiBearerAuth,
 } from '@nestjs/swagger';
-import { promises as fs } from 'fs';
+import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 
 @ApiTags('Upload')
 @Controller('upload')
 export class UploadController {
+  constructor(private readonly cloudinaryService: CloudinaryService) {}
+
   @Get('health')
   health() {
     return { status: 'ok', root: process.cwd() };
@@ -51,7 +52,17 @@ export class UploadController {
       storage: memoryStorage(),
       limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
       fileFilter: (req, file, callback) => {
-        if (!file.originalname.match(/\.(jpg|jpeg|png|gif|pdf)$/i)) {
+        const allowedMimeTypes = [
+          'image/jpeg',
+          'image/png',
+          'image/gif',
+          'image/webp',
+          'application/pdf',
+        ];
+        if (
+          !file.originalname.match(/\.(jpg|jpeg|png|gif|webp|pdf)$/i) ||
+          !allowedMimeTypes.includes(file.mimetype)
+        ) {
           return callback(
             new Error(
               'Seuls les images (jpg, png, gif) et les documents PDF sont autorisés !',
@@ -74,32 +85,25 @@ export class UploadController {
     }
 
     try {
-      const uploadsDir = join(process.cwd(), 'uploads');
-
-      // S'assurer que le dossier existe
-      await fs.mkdir(uploadsDir, { recursive: true });
-
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-      const ext = extname(file.originalname).toLowerCase();
-      const filename = `upload-${uniqueSuffix}${ext}`;
-      const filePath = join(uploadsDir, filename);
-
-      await fs.writeFile(filePath, file.buffer);
-
-      const protocol = req.protocol;
-      const host = req.get('host');
-      const url = `${protocol}://${host}/uploads/${filename}`;
+      const mediaType = typeof req.body?.type === 'string' ? req.body.type.toLowerCase() : 'uploads';
+      const folder = `edoteam/users/${req.user.id}/${mediaType}`;
+      const resourceType = file.mimetype === 'application/pdf' ? 'raw' : 'image';
+      const uploaded = await this.cloudinaryService.upload(file.buffer, folder, resourceType);
 
       return {
-        url: url,
-        filename: filename,
+        url: uploaded.secureUrl,
+        publicId: uploaded.publicId,
+        resourceType: uploaded.resourceType,
         mimetype: file.mimetype,
         size: file.size,
       };
     } catch (error) {
-      console.error('Erreur lors de la sauvegarde du fichier:', error);
+      if (error instanceof BadRequestException || error instanceof InternalServerErrorException) {
+        throw error;
+      }
+      console.error('Erreur lors de l’upload Cloudinary:', error instanceof Error ? error.message : String(error));
       throw new InternalServerErrorException(
-        'Erreur critique lors de la sauvegarde du fichier sur le serveur.',
+        'Erreur lors de l’upload du fichier.',
       );
     }
   }

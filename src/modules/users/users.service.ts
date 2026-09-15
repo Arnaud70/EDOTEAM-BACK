@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { promises as fs } from 'fs';
 import { join } from 'path';
+import { CloudinaryService } from '../../common/cloudinary/cloudinary.service';
 import {
   containsBannedWord,
   BANNED_WORD_MESSAGE,
@@ -19,6 +20,7 @@ export class UsersService {
   constructor(
     private prisma: PrismaService,
     private notificationsService: NotificationsService,
+    private cloudinaryService: CloudinaryService,
   ) {}
 
   private normalizeMediaUrl(url: string) {
@@ -80,6 +82,7 @@ export class UsersService {
       'titreProfessionnel',
       'bio',
       'photoUrl',
+      'photoPublicId',
       'genre',
     ] as const;
 
@@ -93,11 +96,15 @@ export class UsersService {
       }
     }
 
+    const previousPhotoPublicId = currentUser.photoPublicId;
     if (Object.prototype.hasOwnProperty.call(updateData, 'photoUrl')) {
       updateData.photoUrl =
         updateData.photoUrl === ''
           ? null
           : this.normalizeMediaUrl(updateData.photoUrl);
+    }
+    if (Object.prototype.hasOwnProperty.call(updateData, 'photoPublicId') && updateData.photoPublicId === '') {
+      updateData.photoPublicId = null;
     }
 
     // Filtre de contenu inapproprié sur les champs libres visibles publiquement.
@@ -131,6 +138,14 @@ export class UsersService {
         },
       },
     });
+
+    if (
+      previousPhotoPublicId &&
+      previousPhotoPublicId !== updateData.photoPublicId &&
+      Object.prototype.hasOwnProperty.call(updateData, 'photoUrl')
+    ) {
+      await this.cloudinaryService.delete(previousPhotoPublicId).catch(() => undefined);
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash, ...result } = updated;
@@ -258,7 +273,7 @@ export class UsersService {
 
   async addMedia(
     userId: string,
-    data: { url: string; type: 'PROFILE' | 'WORK' | 'DOCUMENT' },
+    data: { url: string; type: 'PROFILE' | 'WORK' | 'DOCUMENT'; publicId?: string; resourceType?: string },
   ) {
     const normalizedUrl = this.normalizeMediaUrl(data.url);
 
@@ -271,6 +286,8 @@ export class UsersService {
         userId,
         url: normalizedUrl,
         type: data.type,
+        cloudinaryPublicId: data.publicId,
+        cloudinaryResourceType: data.resourceType,
       },
     });
 
@@ -339,7 +356,9 @@ export class UsersService {
       );
     }
 
-    if (media.url.includes('/uploads/')) {
+    if (media.cloudinaryPublicId) {
+      await this.cloudinaryService.delete(media.cloudinaryPublicId, media.cloudinaryResourceType || 'image');
+    } else if (media.url.includes('/uploads/')) {
       try {
         const localPath = media.url.replace(
           `${process.env.BACKEND_URL || 'http://localhost:3000'}`,

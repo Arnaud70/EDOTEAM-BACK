@@ -25,32 +25,26 @@ export class AvailabilityService {
       isRecurring?: boolean;
     }>,
   ) {
-    const normalizedSlots = slots.map((slot) => ({
-      ...slot,
-      dayOfWeek: Number(slot.dayOfWeek),
-      startTime: slot.startTime?.trim(),
-      endTime: slot.endTime?.trim(),
-    }));
-
-    for (const slot of normalizedSlots) {
-      if (
-        !Number.isInteger(slot.dayOfWeek) ||
-        slot.dayOfWeek < 0 ||
-        slot.dayOfWeek > 6 ||
-        !/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.startTime) ||
-        !/^([01]\d|2[0-3]):[0-5]\d$/.test(slot.endTime)
-      ) {
-        throw new BadRequestException(
-          'Chaque disponibilité doit contenir un jour et des heures valides.',
-        );
+    const seen = new Set<string>();
+    const normalizedSlots = slots.map((slot) => {
+      if (!Number.isInteger(slot.dayOfWeek) || slot.dayOfWeek < 0 || slot.dayOfWeek > 6) {
+        throw new BadRequestException('Le jour de la semaine est invalide.');
       }
 
-      if (this.toMinutes(slot.endTime) <= this.toMinutes(slot.startTime)) {
-        throw new BadRequestException(
-          "L'heure de fin doit être après l'heure de début.",
-        );
+      const start = this.minutesFromTime(slot.startTime);
+      const end = this.minutesFromTime(slot.endTime);
+      if (start === null || end === null || end <= start) {
+        throw new BadRequestException('L’heure de fin doit être après l’heure de début.');
       }
-    }
+
+      const key = `${slot.dayOfWeek}:${start}:${end}`;
+      if (seen.has(key)) {
+        throw new BadRequestException('Ce créneau de disponibilité existe déjà.');
+      }
+      seen.add(key);
+
+      return { ...slot, start, end };
+    });
 
     for (let index = 0; index < normalizedSlots.length; index += 1) {
       for (let otherIndex = index + 1; otherIndex < normalizedSlots.length; otherIndex += 1) {
@@ -58,12 +52,10 @@ export class AvailabilityService {
         const other = normalizedSlots[otherIndex];
         if (
           current.dayOfWeek === other.dayOfWeek &&
-          this.toMinutes(current.startTime) < this.toMinutes(other.endTime) &&
-          this.toMinutes(current.endTime) > this.toMinutes(other.startTime)
+          current.start < other.end &&
+          current.end > other.start
         ) {
-          throw new BadRequestException(
-            'Deux disponibilités du même jour se chevauchent.',
-          );
+          throw new BadRequestException('Deux créneaux du même jour se chevauchent.');
         }
       }
     }
@@ -89,7 +81,8 @@ export class AvailabilityService {
     });
   }
 
-  private toMinutes(value: string): number {
+  private minutesFromTime(value: string): number | null {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return null;
     const [hours, minutes] = value.split(':').map(Number);
     return hours * 60 + minutes;
   }

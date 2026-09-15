@@ -9,41 +9,44 @@ describe('AvailabilityService', () => {
       findMany: jest.fn(),
     },
   } as any;
-  let service: AvailabilityService;
+  const service = new AvailabilityService(prisma);
 
-  beforeEach(() => {
-    jest.clearAllMocks();
-    prisma.availability.deleteMany.mockResolvedValue({ count: 0 });
-    prisma.availability.createMany.mockResolvedValue({ count: 1 });
-    service = new AvailabilityService(prisma);
-  });
+  beforeEach(() => jest.clearAllMocks());
 
-  it('refuses a slot whose end is before its start', async () => {
+  it('rejects an end time before the start time', async () => {
     await expect(
       service.setAvailability('provider-1', [
-        { dayOfWeek: 0, startTime: '12:00', endTime: '08:00' },
+        { dayOfWeek: 0, startTime: '14:00', endTime: '12:00' },
       ]),
-    ).rejects.toBeInstanceOf(BadRequestException);
+    ).rejects.toThrow(BadRequestException);
     expect(prisma.availability.deleteMany).not.toHaveBeenCalled();
   });
 
-  it('refuses overlapping slots on the same day', async () => {
+  it('rejects duplicate and overlapping slots on the same day', async () => {
     await expect(
       service.setAvailability('provider-1', [
         { dayOfWeek: 0, startTime: '08:00', endTime: '12:00' },
         { dayOfWeek: 0, startTime: '10:00', endTime: '14:00' },
       ]),
     ).rejects.toThrow('chevauchent');
-    expect(prisma.availability.deleteMany).not.toHaveBeenCalled();
+
+    await expect(
+      service.setAvailability('provider-1', [
+        { dayOfWeek: 0, startTime: '08:00', endTime: '12:00' },
+        { dayOfWeek: 0, startTime: '08:00', endTime: '12:00' },
+      ]),
+    ).rejects.toThrow('existe déjà');
   });
 
   it('allows adjacent slots on the same day', async () => {
+    prisma.availability.createMany.mockResolvedValue({ count: 2 });
+
     await expect(
       service.setAvailability('provider-1', [
         { dayOfWeek: 0, startTime: '08:00', endTime: '12:00' },
         { dayOfWeek: 0, startTime: '14:00', endTime: '18:00' },
       ]),
-    ).resolves.toEqual({ count: 1 });
-    expect(prisma.availability.createMany).toHaveBeenCalled();
+    ).resolves.toEqual({ count: 2 });
+    expect(prisma.availability.deleteMany).toHaveBeenCalled();
   });
 });

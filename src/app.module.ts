@@ -5,6 +5,7 @@ import { APP_GUARD } from '@nestjs/core';
 import { CacheModule } from '@nestjs/cache-manager';
 import { buildCacheOptions } from './common/cache/cache.config';
 import { MailModule } from './common/mail/mail.module';
+import { CloudinaryModule } from './common/cloudinary/cloudinary.module';
 
 // Core
 import { PrismaModule } from './prisma/prisma.module';
@@ -41,6 +42,7 @@ import { PaymentsModule } from './modules/payments/payments.module';
       useFactory: buildCacheOptions,
     }),
     MailModule,
+    CloudinaryModule,
     PrismaModule,
     AuthModule,
     UsersModule,
