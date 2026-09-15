@@ -1,1 +1,1 @@
-ALTER TABLE "bookings" ADD COLUMN "client_note" TEXT;
+ALTER TABLE "bookings" ADD COLUMN IF NOT EXISTS "client_note" TEXT;
